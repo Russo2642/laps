@@ -11,19 +11,22 @@ import (
 	"laps/config"
 	"laps/internal/domain"
 	"laps/internal/service"
+	"laps/internal/transport/websocket"
 )
 
 type Handler struct {
-	services *service.Services
-	logger   *zap.Logger
-	config   *config.Config
+	services     *service.Services
+	logger       *zap.Logger
+	config       *config.Config
+	signalingHub *websocket.SignalingHub
 }
 
-func NewHandler(services *service.Services, logger *zap.Logger, config *config.Config) *Handler {
+func NewHandler(services *service.Services, logger *zap.Logger, config *config.Config, signalingHub *websocket.SignalingHub) *Handler {
 	return &Handler{
-		services: services,
-		logger:   logger,
-		config:   config,
+		services:     services,
+		logger:       logger,
+		config:       config,
+		signalingHub: signalingHub,
 	}
 }
 
@@ -172,6 +175,17 @@ func (h *Handler) InitRoutes(router *gin.Engine) {
 		specialists.POST("/:id/work-experience", h.authMiddleware(), h.addWorkExperienceToSpecialist)
 		specialists.POST("/:id/education", h.authMiddleware(), h.addEducationToSpecialist)
 	}
+
+	// Initialize chat routes
+	h.initChatRoutes(api)
+
+	// Test route to verify no auth middleware
+	router.GET("/test-no-auth", func(c *gin.Context) {
+		c.JSON(200, gin.H{"message": "no auth required", "path": c.Request.URL.Path})
+	})
+
+	// WebSocket signaling route for WebRTC (no middleware - handles auth internally)
+	router.GET("/ws/signaling", h.signalingHub.HandleWebSocket)
 }
 
 func (h *Handler) initScheduleRoutes(api *gin.RouterGroup) {
@@ -191,6 +205,41 @@ func (h *Handler) initScheduleRoutes(api *gin.RouterGroup) {
 				specialistRoutes.DELETE("/:id", h.deleteSchedule)
 			}
 		}
+	}
+}
+
+func (h *Handler) initChatRoutes(api *gin.RouterGroup) {
+	chatHandler := NewChatHandler(h.services.Chat)
+	
+	chat := api.Group("/chat")
+	chat.Use(h.authMiddleware())
+	{
+		// Chat sessions
+		sessions := chat.Group("/sessions")
+		{
+			sessions.POST("/", chatHandler.CreateChatSession)
+			sessions.GET("/", chatHandler.ListChatSessions)
+			sessions.GET("/:id", chatHandler.GetChatSession)
+			sessions.PATCH("/:id", chatHandler.UpdateChatSession)
+			sessions.GET("/appointment/:appointment_id", chatHandler.GetChatSessionByAppointment)
+		}
+		
+		// Chat messages - use a different base path to avoid conflicts
+		chat.GET("/session/:session_id/messages", chatHandler.GetMessages)
+		chat.POST("/session/:session_id/read", chatHandler.MarkMessagesAsRead)
+		chat.GET("/session/:session_id/unread", chatHandler.GetUnreadMessageCount)
+		
+		// Chat messages
+		messages := chat.Group("/messages")
+		{
+			messages.POST("/", chatHandler.SendMessage)
+		}
+		
+		// Chat summary
+		chat.GET("/summary", chatHandler.GetChatSummary)
+		
+		// Call status
+		chat.GET("/session/:session_id/call-status", h.getChatCallStatus)
 	}
 }
 
@@ -262,4 +311,46 @@ func (h *Handler) getSpecialistAppointments(c *gin.Context) {
 	page := offset/limit + 1
 
 	paginatedSuccessResponse(c, appointments, total, page, limit)
+}
+
+func (h *Handler) getChatCallStatus(c *gin.Context) {
+	userID, err := getUserID(c)
+	if err != nil {
+		unauthorizedResponse(c)
+		return
+	}
+
+	sessionIDStr := c.Param("session_id")
+	sessionID, err := strconv.ParseInt(sessionIDStr, 10, 64)
+	if err != nil {
+		badRequestResponse(c, "Invalid session ID")
+		return
+	}
+
+	// Get chat session to verify access
+	session, err := h.services.Chat.GetChatSessionByID(c.Request.Context(), sessionID, userID)
+	if err != nil {
+		notFoundResponse(c, "Chat session not found")
+		return
+	}
+
+	// Get active call between the participants
+	activeCall := h.signalingHub.GetActiveCallForUsers(session.ClientID, session.SpecialistID)
+	
+	response := gin.H{
+		"has_active_call": activeCall != nil,
+		"call_session": nil,
+	}
+	
+	if activeCall != nil {
+		response["call_session"] = gin.H{
+			"id":            activeCall.ID,
+			"status":        activeCall.Status,
+			"client_id":     activeCall.ClientID,
+			"specialist_id": activeCall.SpecialistID,
+			"created_at":    activeCall.CreatedAt,
+		}
+	}
+
+	c.JSON(http.StatusOK, response)
 }

@@ -419,7 +419,7 @@ func (h *Handler) getFreeSlots(c *gin.Context) {
 		return
 	}
 
-	slots, err := h.services.Schedule.GenerateTimeSlots(c.Request.Context(), specialistID, date)
+	slots, err := h.services.Appointment.GetFreeSlots(c.Request.Context(), specialistID, date)
 	if err != nil {
 		h.logger.Error("ошибка получения свободных слотов", zap.Error(err))
 		errorResponse(c, http.StatusInternalServerError, "ошибка получения свободных слотов")

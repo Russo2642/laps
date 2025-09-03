@@ -18,6 +18,7 @@ import (
 	"laps/internal/service"
 	"laps/internal/storage"
 	"laps/internal/transport/rest"
+	"laps/internal/transport/websocket"
 	"laps/pkg/database"
 
 	swaggerFiles "github.com/swaggo/files"
@@ -89,7 +90,11 @@ func main() {
 		FileStorage: fileStorage,
 	})
 
-	handler := rest.NewHandler(services, logger, cfg)
+	// Initialize WebSocket signaling hub
+	signalingHub := websocket.NewSignalingHub(logger, services)
+	go signalingHub.Run()
+
+	handler := rest.NewHandler(services, logger, cfg, signalingHub)
 
 	router := gin.Default()
 

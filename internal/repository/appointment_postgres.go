@@ -498,6 +498,12 @@ func (r *AppointmentRepo) CountByFilter(ctx context.Context, filter domain.Appoi
 		argCount++
 	}
 
+	if filter.ExcludeStatus != nil {
+		conditions = append(conditions, fmt.Sprintf("status != $%d", argCount))
+		args = append(args, *filter.ExcludeStatus)
+		argCount++
+	}
+
 	if filter.StartDate != nil {
 		conditions = append(conditions, fmt.Sprintf("appointment_date >= $%d", argCount))
 		args = append(args, filter.StartDate)
@@ -552,6 +558,12 @@ func (r *AppointmentRepo) List(ctx context.Context, filter domain.AppointmentFil
 		argCount++
 	}
 
+	if filter.ExcludeStatus != nil {
+		conditions = append(conditions, fmt.Sprintf("a.status != $%d", argCount))
+		args = append(args, *filter.ExcludeStatus)
+		argCount++
+	}
+
 	if filter.StartDate != nil {
 		conditions = append(conditions, fmt.Sprintf("a.appointment_date >= $%d", argCount))
 		args = append(args, filter.StartDate)
@@ -586,7 +598,7 @@ func (r *AppointmentRepo) List(ctx context.Context, filter domain.AppointmentFil
 
 	rows, err := r.db.Query(ctx, query, args...)
 	if err != nil {
-		return nil, fmt.Errorf("ошибка выполнения запроса: %w", err)
+		return nil, fmt.Errorf("ошибка выполnения запроса: %w", err)
 	}
 	defer rows.Close()
 

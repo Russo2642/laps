@@ -17,6 +17,7 @@ type Repositories struct {
 	Specialization SpecializationRepository
 	Auth           AuthRepository
 	Schedule       ScheduleRepository
+	Chat           ChatRepository
 }
 
 func NewRepositories(db *pgxpool.Pool) *Repositories {
@@ -28,6 +29,7 @@ func NewRepositories(db *pgxpool.Pool) *Repositories {
 		Appointment:    NewAppointmentRepository(db),
 		Review:         NewReviewRepository(db),
 		Schedule:       NewScheduleRepository(db),
+		Chat:           NewChatRepository(db),
 	}
 }
 
@@ -120,4 +122,21 @@ type ScheduleRepository interface {
 	Delete(ctx context.Context, id int64) error
 	List(ctx context.Context, filter domain.ScheduleFilter) ([]domain.Schedule, int, error)
 	GetBySpecialistAndDate(ctx context.Context, specialistID int64, date time.Time) (*domain.Schedule, error)
+}
+
+type ChatRepository interface {
+	// Chat Sessions
+	CreateChatSession(ctx context.Context, dto domain.CreateChatSessionDTO) (*domain.ChatSession, error)
+	GetChatSessionByID(ctx context.Context, id int64) (*domain.ChatSession, error)
+	GetChatSessionByAppointmentID(ctx context.Context, appointmentID int64) (*domain.ChatSession, error)
+	ListChatSessions(ctx context.Context, filter domain.ChatSessionFilter) ([]domain.ChatSession, error)
+	CountChatSessions(ctx context.Context, filter domain.ChatSessionFilter) (int64, error)
+	UpdateChatSession(ctx context.Context, id int64, dto domain.UpdateChatSessionDTO) (*domain.ChatSession, error)
+	
+	// Chat Messages
+	CreateChatMessage(ctx context.Context, dto domain.CreateChatMessageDTO) (*domain.ChatMessage, error)
+	ListChatMessages(ctx context.Context, filter domain.ChatMessageFilter) ([]domain.ChatMessage, error)
+	CountChatMessages(ctx context.Context, filter domain.ChatMessageFilter) (int64, error)
+	MarkMessagesAsRead(ctx context.Context, sessionID int64, userID int64) error
+	GetUnreadMessageCount(ctx context.Context, sessionID int64, userID int64) (int64, error)
 }

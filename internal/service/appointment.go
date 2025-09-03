@@ -15,6 +15,7 @@ type AppointmentServiceImpl struct {
 	repo           repository.AppointmentRepository
 	specialistRepo repository.SpecialistRepository
 	userRepo       repository.UserRepository
+	chatService    ChatService
 	logger         *zap.Logger
 }
 
@@ -22,12 +23,14 @@ func NewAppointmentService(
 	repo repository.AppointmentRepository,
 	specialistRepo repository.SpecialistRepository,
 	userRepo repository.UserRepository,
+	chatService ChatService,
 	logger *zap.Logger,
 ) *AppointmentServiceImpl {
 	return &AppointmentServiceImpl{
 		repo:           repo,
 		specialistRepo: specialistRepo,
 		userRepo:       userRepo,
+		chatService:    chatService,
 		logger:         logger,
 	}
 }
@@ -71,6 +74,24 @@ func (s *AppointmentServiceImpl) Create(ctx context.Context, clientID int64, dto
 	if err != nil {
 		s.logger.Error("ошибка создания записи", zap.Error(err))
 		return 0, errors.New("ошибка при создании записи")
+	}
+
+	// Create chat session automatically for this appointment
+	chatDTO := domain.CreateChatSessionDTO{
+		AppointmentID:    id,
+		ClientID:         clientID,
+		SpecialistID:     dto.SpecialistID,
+		SpecializationID: 0, // Will be set by chat service from appointment or specialist
+		Status:           domain.ChatSessionStatusPending,
+	}
+
+	_, err = s.chatService.CreateChatSession(ctx, chatDTO)
+	if err != nil {
+		s.logger.Error("ошибка создания чат-сессии для записи", 
+			zap.Int64("appointmentID", id), 
+			zap.Error(err))
+		// Don't fail the appointment creation if chat creation fails
+		// Just log the error and continue
 	}
 
 	return id, nil
@@ -140,6 +161,16 @@ func (s *AppointmentServiceImpl) Cancel(ctx context.Context, id int64) error {
 	if err != nil {
 		s.logger.Error("ошибка отмены записи", zap.Int64("id", id), zap.Error(err))
 		return errors.New("ошибка при отмене записи")
+	}
+
+	// Archive the chat session when appointment is cancelled
+	err = s.chatService.ArchiveChatSession(ctx, id)
+	if err != nil {
+		s.logger.Error("ошибка архивации чат-сессии при отмене записи", 
+			zap.Int64("appointmentID", id), 
+			zap.Error(err))
+		// Don't fail the cancellation if chat archiving fails
+		// Just log the error and continue
 	}
 
 	return nil

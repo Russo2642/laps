@@ -23,8 +23,9 @@ const (
 type CommunicationMethod string
 
 const (
-	CommunicationMethodPhone    CommunicationMethod = "phone"
-	CommunicationMethodWhatsApp CommunicationMethod = "whatsapp"
+	CommunicationMethodPhone     CommunicationMethod = "phone"
+	CommunicationMethodWhatsApp  CommunicationMethod = "whatsapp"
+	CommunicationMethodVideoCall CommunicationMethod = "video_call"
 )
 
 type Appointment struct {
@@ -51,7 +52,7 @@ type CreateAppointmentDTO struct {
 	ConsultationType    ConsultationType    `json:"consultation_type" binding:"required,oneof=primary secondary"`
 	SpecializationID    *int64              `json:"specialization_id"`
 	AppointmentDate     time.Time           `json:"appointment_date" binding:"required"`
-	CommunicationMethod CommunicationMethod `json:"communication_method" binding:"required,oneof=phone whatsapp"`
+	CommunicationMethod CommunicationMethod `json:"communication_method" binding:"required,oneof=phone whatsapp video_call"`
 }
 
 type UpdateAppointmentDTO struct {
@@ -61,11 +62,12 @@ type UpdateAppointmentDTO struct {
 }
 
 type AppointmentFilter struct {
-	ClientID     *int64             `json:"client_id"`
-	SpecialistID *int64             `json:"specialist_id"`
-	Status       *AppointmentStatus `json:"status"`
-	StartDate    *time.Time         `json:"start_date"`
-	EndDate      *time.Time         `json:"end_date"`
-	Limit        int                `json:"limit"`
-	Offset       int                `json:"offset"`
+	ClientID      *int64             `json:"client_id"`
+	SpecialistID  *int64             `json:"specialist_id"`
+	Status        *AppointmentStatus `json:"status"`
+	ExcludeStatus *AppointmentStatus `json:"exclude_status"`
+	StartDate     *time.Time         `json:"start_date"`
+	EndDate       *time.Time         `json:"end_date"`
+	Limit         int                `json:"limit"`
+	Offset        int                `json:"offset"`
 }

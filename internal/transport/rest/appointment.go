@@ -293,6 +293,11 @@ func (h *Handler) getAppointments(c *gin.Context) {
 		filter.Status = &status
 	}
 
+	if excludeStatusStr := c.Query("exclude_status"); excludeStatusStr != "" {
+		excludeStatus := domain.AppointmentStatus(excludeStatusStr)
+		filter.ExcludeStatus = &excludeStatus
+	}
+
 	if startDateStr := c.Query("start_date"); startDateStr != "" {
 		startDate, err := time.Parse("2006-01-02", startDateStr)
 		if err == nil {

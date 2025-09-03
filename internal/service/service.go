@@ -30,19 +30,24 @@ type Services struct {
 	Review         ReviewService
 	Education      EducationService
 	WorkExperience WorkExperienceService
+	Chat           ChatService
 }
 
 func NewServices(deps Deps) *Services {
+	// Create chat service first since appointment service depends on it
+	chatService := NewChatService(deps.Repos)
+	
 	return &Services{
 		User:           NewUserService(deps.Repos.User, deps.Logger),
 		Auth:           NewAuthService(deps.Repos.Auth, deps.Repos.User, deps.Config.JWT, deps.Logger),
 		Specialist:     NewSpecialistService(deps.Repos.Specialist, deps.Repos.User, deps.Repos.Specialization, deps.FileStorage, deps.Logger),
 		Specialization: NewSpecializationService(deps.Repos.Specialization, deps.Logger),
 		Schedule:       NewScheduleService(deps.Repos.Schedule, deps.Repos.Specialist, deps.Logger),
-		Appointment:    NewAppointmentService(deps.Repos.Appointment, deps.Repos.Specialist, deps.Repos.User, deps.Logger),
+		Appointment:    NewAppointmentService(deps.Repos.Appointment, deps.Repos.Specialist, deps.Repos.User, chatService, deps.Logger),
 		Review:         NewReviewService(deps.Repos.Review, deps.Repos.Specialist, deps.Repos.User, deps.Repos.Appointment, deps.Logger),
 		Education:      NewEducationService(deps.Repos.Specialist, deps.Logger),
 		WorkExperience: NewWorkExperienceService(deps.Repos.Specialist, deps.Logger),
+		Chat:           chatService,
 	}
 }
 
@@ -137,4 +142,21 @@ type ReviewService interface {
 	GetReplyByID(ctx context.Context, id int64) (*domain.Reply, error)
 	DeleteReply(ctx context.Context, replyID int64) error
 	GetRepliesByReviewID(ctx context.Context, reviewID int64) ([]domain.Reply, error)
+}
+
+type ChatService interface {
+	// Chat Sessions
+	CreateChatSession(ctx context.Context, dto domain.CreateChatSessionDTO) (*domain.ChatSession, error)
+	GetChatSessionByID(ctx context.Context, id int64, userID int64) (*domain.ChatSession, error)
+	GetChatSessionByAppointmentID(ctx context.Context, appointmentID int64, userID int64) (*domain.ChatSession, error)
+	ListChatSessions(ctx context.Context, userID int64, filter domain.ChatSessionFilter) ([]domain.ChatSession, int64, error)
+	UpdateChatSession(ctx context.Context, id int64, dto domain.UpdateChatSessionDTO, userID int64) (*domain.ChatSession, error)
+	ArchiveChatSession(ctx context.Context, appointmentID int64) error
+	
+	// Chat Messages
+	CreateChatMessage(ctx context.Context, dto domain.CreateChatMessageDTO, userID int64) (*domain.ChatMessage, error)
+	ListChatMessages(ctx context.Context, sessionID int64, userID int64, filter domain.ChatMessageFilter) ([]domain.ChatMessage, int64, error)
+	MarkMessagesAsRead(ctx context.Context, sessionID int64, userID int64) error
+	GetUnreadMessageCount(ctx context.Context, sessionID int64, userID int64) (int64, error)
+	GetUserChatSummary(ctx context.Context, userID int64) (map[string]interface{}, error)
 }
