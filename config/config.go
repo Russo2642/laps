@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -14,6 +15,7 @@ type Config struct {
 	Postgres    PostgresConfig
 	JWT         JWTConfig
 	S3          S3Config
+	CORS        CORSConfig
 }
 
 type HTTPConfig struct {
@@ -48,6 +50,10 @@ type S3Config struct {
 	SecretAccessKey string
 	Bucket          string
 	UseSSL          bool
+}
+
+type CORSConfig struct {
+	AllowedOrigins []string
 }
 
 func NewConfig() (*Config, error) {
@@ -110,6 +116,9 @@ func NewConfig() (*Config, error) {
 			Bucket:          getEnv("S3_BUCKET", "laps"),
 			UseSSL:          getEnv("S3_USE_SSL", "true") == "true",
 		},
+		CORS: CORSConfig{
+			AllowedOrigins: getEnvAsSlice("CORS_ALLOWED_ORIGINS", []string{"http://localhost:3000"}),
+		},
 	}, nil
 }
 
@@ -119,6 +128,21 @@ func getEnv(key, defaultValue string) string {
 		return defaultValue
 	}
 	return value
+}
+
+func getEnvAsSlice(key string, defaultValue []string) []string {
+	valueStr := os.Getenv(key)
+	if valueStr == "" {
+		return defaultValue
+	}
+	
+	// Split by comma and trim whitespace
+	parts := strings.Split(valueStr, ",")
+	result := make([]string, len(parts))
+	for i, part := range parts {
+		result[i] = strings.TrimSpace(part)
+	}
+	return result
 }
 
 func getEnvAsInt(key string, defaultValue int) int {
