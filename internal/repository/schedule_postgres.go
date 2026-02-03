@@ -24,7 +24,7 @@ func (r *ScheduleRepo) Create(ctx context.Context, schedule domain.Schedule) (in
 
 	query := `
 		INSERT INTO schedules (
-			specialist_id, date, start_time, end_time, slot_time, exclude_times, created_at, updated_at
+			specialist_id, day_of_week, start_time, end_time, slot_time, exclude_times, created_at, updated_at
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		RETURNING id
 	`
@@ -33,7 +33,7 @@ func (r *ScheduleRepo) Create(ctx context.Context, schedule domain.Schedule) (in
 		ctx,
 		query,
 		schedule.SpecialistID,
-		schedule.Date,
+		schedule.DayOfWeek,
 		schedule.StartTime,
 		schedule.EndTime,
 		schedule.SlotTime,
@@ -51,7 +51,7 @@ func (r *ScheduleRepo) Create(ctx context.Context, schedule domain.Schedule) (in
 
 func (r *ScheduleRepo) GetByID(ctx context.Context, id int64) (*domain.Schedule, error) {
 	query := `
-		SELECT id, specialist_id, date, start_time, end_time, slot_time, exclude_times, created_at, updated_at
+		SELECT id, specialist_id, day_of_week, start_time, end_time, slot_time, exclude_times, created_at, updated_at
 		FROM schedules
 		WHERE id = $1
 	`
@@ -60,7 +60,7 @@ func (r *ScheduleRepo) GetByID(ctx context.Context, id int64) (*domain.Schedule,
 	err := r.db.QueryRow(ctx, query, id).Scan(
 		&schedule.ID,
 		&schedule.SpecialistID,
-		&schedule.Date,
+		&schedule.DayOfWeek,
 		&schedule.StartTime,
 		&schedule.EndTime,
 		&schedule.SlotTime,
@@ -118,7 +118,7 @@ func (r *ScheduleRepo) Delete(ctx context.Context, id int64) error {
 func (r *ScheduleRepo) List(ctx context.Context, filter domain.ScheduleFilter) ([]domain.Schedule, int, error) {
 	countQuery := `SELECT COUNT(*) FROM schedules WHERE 1=1`
 	selectQuery := `
-		SELECT id, specialist_id, date, start_time, end_time, slot_time, exclude_times, created_at, updated_at
+		SELECT id, specialist_id, day_of_week, start_time, end_time, slot_time, exclude_times, created_at, updated_at
 		FROM schedules
 		WHERE 1=1
 	`
@@ -133,26 +133,27 @@ func (r *ScheduleRepo) List(ctx context.Context, filter domain.ScheduleFilter) (
 		argPos++
 	}
 
-	if filter.StartDate != nil {
-		conditions += fmt.Sprintf(" AND date >= $%d", argPos)
-		args = append(args, *filter.StartDate)
-		argPos++
-	}
-
-	if filter.EndDate != nil {
-		conditions += fmt.Sprintf(" AND date <= $%d", argPos)
-		args = append(args, *filter.EndDate)
+	if filter.DayOfWeek != nil {
+		conditions += fmt.Sprintf(" AND day_of_week = $%d", argPos)
+		args = append(args, *filter.DayOfWeek)
 		argPos++
 	}
 
 	countQuery += conditions
 	selectQuery += conditions
 
-	selectQuery += fmt.Sprintf(" ORDER BY date LIMIT $%d OFFSET $%d", argPos, argPos+1)
+	selectQuery += fmt.Sprintf(" ORDER BY day_of_week, start_time LIMIT $%d OFFSET $%d", argPos, argPos+1)
 	args = append(args, filter.Limit, filter.Offset)
 
 	var total int
-	err := r.db.QueryRow(ctx, countQuery, args[:argPos-1]...).Scan(&total)
+	countArgs := args
+	if argPos > 1 {
+		countArgs = args[:argPos-1]
+	} else {
+		countArgs = []interface{}{}
+	}
+
+	err := r.db.QueryRow(ctx, countQuery, countArgs...).Scan(&total)
 	if err != nil {
 		return nil, 0, fmt.Errorf("ошибка получения количества расписаний: %w", err)
 	}
@@ -169,7 +170,7 @@ func (r *ScheduleRepo) List(ctx context.Context, filter domain.ScheduleFilter) (
 		err := rows.Scan(
 			&schedule.ID,
 			&schedule.SpecialistID,
-			&schedule.Date,
+			&schedule.DayOfWeek,
 			&schedule.StartTime,
 			&schedule.EndTime,
 			&schedule.SlotTime,
@@ -187,17 +188,23 @@ func (r *ScheduleRepo) List(ctx context.Context, filter domain.ScheduleFilter) (
 }
 
 func (r *ScheduleRepo) GetBySpecialistAndDate(ctx context.Context, specialistID int64, date time.Time) (*domain.Schedule, error) {
+	dayOfWeek := int(date.Weekday())
+	if dayOfWeek == 0 {
+		dayOfWeek = 7
+	}
+
 	query := `
-		SELECT id, specialist_id, date, start_time, end_time, slot_time, exclude_times, created_at, updated_at
+		SELECT id, specialist_id, day_of_week, start_time, end_time, slot_time, exclude_times, created_at, updated_at
 		FROM schedules
-		WHERE specialist_id = $1 AND date = $2
+		WHERE specialist_id = $1 AND day_of_week = $2
+		LIMIT 1
 	`
 
 	var schedule domain.Schedule
-	err := r.db.QueryRow(ctx, query, specialistID, date).Scan(
+	err := r.db.QueryRow(ctx, query, specialistID, dayOfWeek).Scan(
 		&schedule.ID,
 		&schedule.SpecialistID,
-		&schedule.Date,
+		&schedule.DayOfWeek,
 		&schedule.StartTime,
 		&schedule.EndTime,
 		&schedule.SlotTime,

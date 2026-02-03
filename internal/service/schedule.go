@@ -11,23 +11,27 @@ import (
 
 	"laps/internal/domain"
 	"laps/internal/repository"
+	"laps/internal/utils"
 )
 
 type ScheduleServiceImpl struct {
-	repo           repository.ScheduleRepository
-	specialistRepo repository.SpecialistRepository
-	logger         *zap.Logger
+	repo            repository.ScheduleRepository
+	specialistRepo  repository.SpecialistRepository
+	appointmentRepo repository.AppointmentRepository
+	logger          *zap.Logger
 }
 
 func NewScheduleService(
 	repo repository.ScheduleRepository,
 	specialistRepo repository.SpecialistRepository,
+	appointmentRepo repository.AppointmentRepository,
 	logger *zap.Logger,
 ) *ScheduleServiceImpl {
 	return &ScheduleServiceImpl{
-		repo:           repo,
-		specialistRepo: specialistRepo,
-		logger:         logger,
+		repo:            repo,
+		specialistRepo:  specialistRepo,
+		appointmentRepo: appointmentRepo,
+		logger:          logger,
 	}
 }
 
@@ -43,33 +47,44 @@ func (s *ScheduleServiceImpl) Create(ctx context.Context, specialistID int64, dt
 		return 0, errors.New("длительность слота должна быть от 10 до 120 минут")
 	}
 
-	now := time.Now()
-	startDate := now.AddDate(0, 0, -int(now.Weekday())+1)
+	filter := domain.ScheduleFilter{
+		SpecialistID: &specialistID,
+		Limit:        100,
+		Offset:       0,
+	}
+
+	existingSchedules, _, err := s.repo.List(ctx, filter)
+	if err != nil {
+		s.logger.Error("ошибка получения существующих расписаний", zap.Error(err))
+		return 0, fmt.Errorf("ошибка получения существующих расписаний: %w", err)
+	}
+
+	for _, schedule := range existingSchedules {
+		err = s.repo.Delete(ctx, schedule.ID)
+		if err != nil {
+			s.logger.Error("ошибка удаления существующего расписания", zap.Error(err))
+			return 0, fmt.Errorf("ошибка удаления существующего расписания: %w", err)
+		}
+	}
+
 	var lastID int64
 
-	for i := 0; i < 7; i++ {
-		currentDate := startDate.AddDate(0, 0, i)
-		var daySchedule *domain.DaySchedule
+	daySchedules := []struct {
+		dayOfWeek int
+		schedule  *domain.DaySchedule
+	}{
+		{1, dto.WeekSchedule.Monday},
+		{2, dto.WeekSchedule.Tuesday},
+		{3, dto.WeekSchedule.Wednesday},
+		{4, dto.WeekSchedule.Thursday},
+		{5, dto.WeekSchedule.Friday},
+		{6, dto.WeekSchedule.Saturday},
+		{7, dto.WeekSchedule.Sunday},
+	}
 
-		switch i {
-		case 0:
-			daySchedule = dto.WeekSchedule.Monday
-		case 1:
-			daySchedule = dto.WeekSchedule.Tuesday
-		case 2:
-			daySchedule = dto.WeekSchedule.Wednesday
-		case 3:
-			daySchedule = dto.WeekSchedule.Thursday
-		case 4:
-			daySchedule = dto.WeekSchedule.Friday
-		case 5:
-			daySchedule = dto.WeekSchedule.Saturday
-		case 6:
-			daySchedule = dto.WeekSchedule.Sunday
-		}
-
-		if daySchedule != nil && len(daySchedule.WorkTime) > 0 {
-			for _, slot := range daySchedule.WorkTime {
+	for _, ds := range daySchedules {
+		if ds.schedule != nil && len(ds.schedule.WorkTime) > 0 {
+			for _, slot := range ds.schedule.WorkTime {
 				_, err = time.Parse("15:04", slot.StartTime)
 				if err != nil {
 					s.logger.Error("неверный формат времени начала", zap.Error(err))
@@ -84,7 +99,7 @@ func (s *ScheduleServiceImpl) Create(ctx context.Context, specialistID int64, dt
 
 				schedule := domain.Schedule{
 					SpecialistID: specialistID,
-					Date:         currentDate,
+					DayOfWeek:    ds.dayOfWeek,
 					StartTime:    slot.StartTime,
 					EndTime:      slot.EndTime,
 					SlotTime:     dto.SlotTime,
@@ -115,14 +130,8 @@ func (s *ScheduleServiceImpl) GetByID(ctx context.Context, id int64) (*domain.Sc
 }
 
 func (s *ScheduleServiceImpl) Update(ctx context.Context, specialistID int64, dto domain.UpdateScheduleDTO) error {
-	now := time.Now()
-	startDate := now.AddDate(0, 0, -int(now.Weekday())+1)
-	endDate := startDate.AddDate(0, 0, 6)
-
 	filter := domain.ScheduleFilter{
 		SpecialistID: &specialistID,
-		StartDate:    &startDate,
-		EndDate:      &endDate,
 		Limit:        100,
 		Offset:       0,
 	}
@@ -151,29 +160,22 @@ func (s *ScheduleServiceImpl) Update(ctx context.Context, specialistID int64, dt
 		return errors.New("длительность слота должна быть от 10 до 120 минут")
 	}
 
-	for i := 0; i < 7; i++ {
-		currentDate := startDate.AddDate(0, 0, i)
-		var daySchedule *domain.DaySchedule
+	daySchedules := []struct {
+		dayOfWeek int
+		schedule  *domain.DaySchedule
+	}{
+		{1, dto.WeekSchedule.Monday},
+		{2, dto.WeekSchedule.Tuesday},
+		{3, dto.WeekSchedule.Wednesday},
+		{4, dto.WeekSchedule.Thursday},
+		{5, dto.WeekSchedule.Friday},
+		{6, dto.WeekSchedule.Saturday},
+		{7, dto.WeekSchedule.Sunday},
+	}
 
-		switch i {
-		case 0:
-			daySchedule = dto.WeekSchedule.Monday
-		case 1:
-			daySchedule = dto.WeekSchedule.Tuesday
-		case 2:
-			daySchedule = dto.WeekSchedule.Wednesday
-		case 3:
-			daySchedule = dto.WeekSchedule.Thursday
-		case 4:
-			daySchedule = dto.WeekSchedule.Friday
-		case 5:
-			daySchedule = dto.WeekSchedule.Saturday
-		case 6:
-			daySchedule = dto.WeekSchedule.Sunday
-		}
-
-		if daySchedule != nil && len(daySchedule.WorkTime) > 0 {
-			for _, slot := range daySchedule.WorkTime {
+	for _, ds := range daySchedules {
+		if ds.schedule != nil && len(ds.schedule.WorkTime) > 0 {
+			for _, slot := range ds.schedule.WorkTime {
 				_, err = time.Parse("15:04", slot.StartTime)
 				if err != nil {
 					s.logger.Error("неверный формат времени начала", zap.Error(err))
@@ -188,7 +190,7 @@ func (s *ScheduleServiceImpl) Update(ctx context.Context, specialistID int64, dt
 
 				schedule := domain.Schedule{
 					SpecialistID: specialistID,
-					Date:         currentDate,
+					DayOfWeek:    ds.dayOfWeek,
 					StartTime:    slot.StartTime,
 					EndTime:      slot.EndTime,
 					SlotTime:     slotTime,
@@ -260,6 +262,16 @@ func (s *ScheduleServiceImpl) GenerateTimeSlots(ctx context.Context, specialistI
 		excludedSlots[excludeTime] = true
 	}
 
+	busySlots, err := s.appointmentRepo.GetBusySlots(ctx, specialistID, dateStr)
+	if err != nil {
+		s.logger.Error("ошибка получения занятых слотов", zap.Error(err))
+		return nil, err
+	}
+
+	dateTime, _ := time.Parse("2006-01-02", dateStr)
+	isToday := utils.IsTodayInAlmaty(dateTime)
+	nowAlmaty := utils.NowInAlmaty()
+
 	var slots []string
 	currentTime := startTime
 	duration := time.Duration(schedule.SlotTime) * time.Minute
@@ -267,10 +279,26 @@ func (s *ScheduleServiceImpl) GenerateTimeSlots(ctx context.Context, specialistI
 	for currentTime.Before(endTime) {
 		timeStr := currentTime.Format("15:04")
 
-		if !excludedSlots[timeStr] {
-			slots = append(slots, timeStr)
+		if excludedSlots[timeStr] {
+			currentTime = currentTime.Add(duration)
+			continue
 		}
 
+		if busySlots[timeStr] {
+			currentTime = currentTime.Add(duration)
+			continue
+		}
+
+		if isToday {
+			slotDateTime := time.Date(nowAlmaty.Year(), nowAlmaty.Month(), nowAlmaty.Day(),
+				currentTime.Hour(), currentTime.Minute(), 0, 0, utils.AlmatyLocation)
+			if slotDateTime.Before(nowAlmaty) || slotDateTime.Equal(nowAlmaty) {
+				currentTime = currentTime.Add(duration)
+				continue
+			}
+		}
+
+		slots = append(slots, timeStr)
 		currentTime = currentTime.Add(duration)
 	}
 
@@ -279,13 +307,74 @@ func (s *ScheduleServiceImpl) GenerateTimeSlots(ctx context.Context, specialistI
 	return slots, nil
 }
 
-func (s *ScheduleServiceImpl) GetWeekSchedule(ctx context.Context, specialistID int64, startDate time.Time) (*domain.WeekSchedule, int, error) {
-	endDate := startDate.AddDate(0, 0, 6)
+func (s *ScheduleServiceImpl) GenerateTimeSlotsDetailed(ctx context.Context, specialistID int64, dateStr string) ([]domain.TimeSlot, error) {
+	schedule, err := s.GetBySpecialistAndDate(ctx, specialistID, dateStr)
+	if err != nil {
+		return nil, err
+	}
 
+	if schedule == nil {
+		return []domain.TimeSlot{}, nil
+	}
+
+	startTime, _ := time.Parse("15:04", schedule.StartTime)
+	endTime, _ := time.Parse("15:04", schedule.EndTime)
+
+	excludedSlots := make(map[string]bool)
+	for _, excludeTime := range schedule.ExcludeTimes {
+		excludedSlots[excludeTime] = true
+	}
+
+	busySlots, err := s.appointmentRepo.GetBusySlots(ctx, specialistID, dateStr)
+	if err != nil {
+		s.logger.Error("ошибка получения занятых слотов", zap.Error(err))
+		return nil, err
+	}
+
+	dateTime, _ := time.Parse("2006-01-02", dateStr)
+	isToday := utils.IsTodayInAlmaty(dateTime)
+	nowAlmaty := utils.NowInAlmaty()
+
+	var slots []domain.TimeSlot
+	currentTime := startTime
+	duration := time.Duration(schedule.SlotTime) * time.Minute
+
+	for currentTime.Before(endTime) {
+		timeStr := currentTime.Format("15:04")
+
+		if excludedSlots[timeStr] {
+			currentTime = currentTime.Add(duration)
+			continue
+		}
+
+		available := true
+
+		if busySlots[timeStr] {
+			available = false
+		}
+
+		if isToday {
+			slotDateTime := time.Date(nowAlmaty.Year(), nowAlmaty.Month(), nowAlmaty.Day(),
+				currentTime.Hour(), currentTime.Minute(), 0, 0, utils.AlmatyLocation)
+			if slotDateTime.Before(nowAlmaty) || slotDateTime.Equal(nowAlmaty) {
+				available = false
+			}
+		}
+
+		slots = append(slots, domain.TimeSlot{
+			Time:      timeStr,
+			Available: available,
+		})
+
+		currentTime = currentTime.Add(duration)
+	}
+
+	return slots, nil
+}
+
+func (s *ScheduleServiceImpl) GetWeekSchedule(ctx context.Context, specialistID int64, startDate time.Time) (*domain.WeekSchedule, int, error) {
 	filter := domain.ScheduleFilter{
 		SpecialistID: &specialistID,
-		StartDate:    &startDate,
-		EndDate:      &endDate,
 		Limit:        100,
 		Offset:       0,
 	}
@@ -301,11 +390,7 @@ func (s *ScheduleServiceImpl) GetWeekSchedule(ctx context.Context, specialistID 
 
 	schedulesByDay := make(map[int][]domain.Schedule)
 	for _, schedule := range schedules {
-		dayOfWeek := int(schedule.Date.Weekday())
-		if dayOfWeek == 0 {
-			dayOfWeek = 7
-		}
-		schedulesByDay[dayOfWeek] = append(schedulesByDay[dayOfWeek], schedule)
+		schedulesByDay[schedule.DayOfWeek] = append(schedulesByDay[schedule.DayOfWeek], schedule)
 		slotTime = schedule.SlotTime
 	}
 

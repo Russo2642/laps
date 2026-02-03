@@ -30,19 +30,28 @@ type Services struct {
 	Review         ReviewService
 	Education      EducationService
 	WorkExperience WorkExperienceService
+	GoogleCalendar GoogleCalendarService
 }
 
 func NewServices(deps Deps) *Services {
+	googleCalendarService, err := NewGoogleCalendarService(deps.Config.GoogleCalendar, deps.Logger)
+	if err != nil {
+		deps.Logger.Error("Не удалось инициализировать Google Calendar сервис", zap.Error(err))
+		disabledConfig := config.GoogleCalendarConfig{Enabled: false}
+		googleCalendarService, _ = NewGoogleCalendarService(disabledConfig, deps.Logger)
+	}
+
 	return &Services{
 		User:           NewUserService(deps.Repos.User, deps.Logger),
-		Auth:           NewAuthService(deps.Repos.Auth, deps.Repos.User, deps.Config.JWT, deps.Logger),
+		Auth:           NewAuthService(deps.Repos.Auth, deps.Repos.User, deps.Repos.Specialist, deps.Config.JWT, deps.Logger),
 		Specialist:     NewSpecialistService(deps.Repos.Specialist, deps.Repos.User, deps.Repos.Specialization, deps.FileStorage, deps.Logger),
 		Specialization: NewSpecializationService(deps.Repos.Specialization, deps.Logger),
-		Schedule:       NewScheduleService(deps.Repos.Schedule, deps.Repos.Specialist, deps.Logger),
-		Appointment:    NewAppointmentService(deps.Repos.Appointment, deps.Repos.Specialist, deps.Repos.User, deps.Logger),
+		Schedule:       NewScheduleService(deps.Repos.Schedule, deps.Repos.Specialist, deps.Repos.Appointment, deps.Logger),
+		Appointment:    NewAppointmentService(deps.Repos.Appointment, deps.Repos.Specialist, deps.Repos.User, deps.Repos.Schedule, googleCalendarService, deps.Logger),
 		Review:         NewReviewService(deps.Repos.Review, deps.Repos.Specialist, deps.Repos.User, deps.Repos.Appointment, deps.Logger),
 		Education:      NewEducationService(deps.Repos.Specialist, deps.Logger),
 		WorkExperience: NewWorkExperienceService(deps.Repos.Specialist, deps.Logger),
+		GoogleCalendar: googleCalendarService,
 	}
 }
 
@@ -112,6 +121,7 @@ type ScheduleService interface {
 	List(ctx context.Context, filter domain.ScheduleFilter) ([]domain.Schedule, int, error)
 	GetBySpecialistAndDate(ctx context.Context, specialistID int64, date string) (*domain.Schedule, error)
 	GenerateTimeSlots(ctx context.Context, specialistID int64, date string) ([]string, error)
+	GenerateTimeSlotsDetailed(ctx context.Context, specialistID int64, date string) ([]domain.TimeSlot, error)
 	GetWeekSchedule(ctx context.Context, specialistID int64, startDate time.Time) (*domain.WeekSchedule, int, error)
 }
 
@@ -121,7 +131,6 @@ type AppointmentService interface {
 	Update(ctx context.Context, id int64, dto domain.UpdateAppointmentDTO) error
 	Cancel(ctx context.Context, id int64) error
 	List(ctx context.Context, filter domain.AppointmentFilter) ([]domain.Appointment, int, error)
-	GetFreeSlots(ctx context.Context, specialistID int64, date string) ([]string, error)
 	CheckConsultationType(ctx context.Context, clientID int64, specialistID int64) (domain.ConsultationType, error)
 }
 

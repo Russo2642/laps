@@ -21,7 +21,7 @@ import (
 // @Produce json
 // @Param limit query int false "Лимит записей на странице (по умолчанию 20)"
 // @Param offset query int false "Смещение (по умолчанию 0)"
-// @Param type query string false "Тип специалиста (психолог, психотерапевт и т.д.)"
+// @Param type query string false "Тип специалиста (lawyer, psychologist, nutritionist, trainer)"
 // @Param specialization_id query integer false "ID специализации"
 // @Param date query string false "Дата для получения свободных слотов (YYYY-MM-DD)"
 // @Success 200 {object} paginatedResponse "Список специалистов с пагинацией"
@@ -117,7 +117,7 @@ func (h *Handler) getSpecialistByID(c *gin.Context) {
 }
 
 // @Summary Создать специалиста
-// @Description Создает профиль специалиста для пользователя
+// @Description Создает или обновляет профиль специалиста для пользователя (при регистрации профиль создается автоматически)
 // @Tags Специалисты
 // @Accept json
 // @Produce json
@@ -185,6 +185,11 @@ func (h *Handler) createSpecialist(c *gin.Context) {
 			badRequestResponse(c, "у вас нет прав для создания профиля специалиста")
 			return
 		}
+	}
+
+	if req.SpecializationID == nil {
+		badRequestResponse(c, "поле 'specialization_id' обязательно для заполнения")
+		return
 	}
 
 	id, err := h.services.Specialist.Create(c.Request.Context(), targetUserID, req)

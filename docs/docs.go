@@ -1374,7 +1374,7 @@ const docTemplate = `{
         },
         "/schedules": {
             "get": {
-                "description": "Возвращает список расписаний с поддержкой фильтрации",
+                "description": "Возвращает recurring расписание специалиста (шаблон для всех недель)",
                 "produces": [
                     "application/json"
                 ],
@@ -1390,15 +1390,9 @@ const docTemplate = `{
                         "in": "query"
                     },
                     {
-                        "type": "string",
-                        "description": "Начальная дата (YYYY-MM-DD)",
-                        "name": "date_from",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Конечная дата (YYYY-MM-DD)",
-                        "name": "date_to",
+                        "type": "integer",
+                        "description": "День недели (1=понедельник, 7=воскресенье)",
+                        "name": "day_of_week",
                         "in": "query"
                     },
                     {
@@ -1562,14 +1556,14 @@ const docTemplate = `{
         },
         "/schedules/free-slots": {
             "get": {
-                "description": "Возвращает список свободных временных слотов на выбранную дату",
+                "description": "Возвращает список временных слотов на выбранную дату с информацией о доступности",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "Расписание"
                 ],
-                "summary": "Получить свободные слоты специалиста",
+                "summary": "Получить слоты специалиста",
                 "parameters": [
                     {
                         "type": "integer",
@@ -1584,11 +1578,17 @@ const docTemplate = `{
                         "name": "date",
                         "in": "query",
                         "required": true
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Вернуть детальную информацию (со всеми слотами и статусом)",
+                        "name": "detailed",
+                        "in": "query"
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "Список свободных слотов",
+                        "description": "Список слотов",
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
@@ -1794,7 +1794,7 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "Тип специалиста (психолог, психотерапевт и т.д.)",
+                        "description": "Тип специалиста (lawyer, psychologist, nutritionist, trainer)",
                         "name": "type",
                         "in": "query"
                     },
@@ -1813,12 +1813,9 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "Список специалистов",
+                        "description": "Список специалистов с пагинацией",
                         "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/domain.Specialist"
-                            }
+                            "$ref": "#/definitions/rest.paginatedResponse"
                         }
                     },
                     "500": {
@@ -1835,7 +1832,7 @@ const docTemplate = `{
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "Создает профиль специалиста для пользователя",
+                "description": "Создает или обновляет профиль специалиста для пользователя (при регистрации профиль создается автоматически)",
                 "consumes": [
                     "application/json"
                 ],
@@ -2493,7 +2490,7 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "Тип специалиста (психолог, психотерапевт и т.д.)",
+                        "description": "Тип специалиста (lawyer, psychologist, nutritionist, trainer)",
                         "name": "type",
                         "in": "query"
                     },
@@ -3537,6 +3534,15 @@ const docTemplate = `{
                 "id": {
                     "type": "integer"
                 },
+                "is_online": {
+                    "type": "boolean"
+                },
+                "meet_event_id": {
+                    "type": "string"
+                },
+                "meet_link": {
+                    "type": "string"
+                },
                 "payment_id": {
                     "type": "string"
                 },
@@ -3582,11 +3588,13 @@ const docTemplate = `{
             "type": "string",
             "enum": [
                 "phone",
-                "whatsapp"
+                "whatsapp",
+                "video"
             ],
             "x-enum-varnames": [
                 "CommunicationMethodPhone",
-                "CommunicationMethodWhatsApp"
+                "CommunicationMethodWhatsApp",
+                "CommunicationMethodVideo"
             ]
         },
         "domain.ConsultationType": {
@@ -3615,7 +3623,8 @@ const docTemplate = `{
                 "communication_method": {
                     "enum": [
                         "phone",
-                        "whatsapp"
+                        "whatsapp",
+                        "video"
                     ],
                     "allOf": [
                         {
@@ -3738,10 +3747,6 @@ const docTemplate = `{
         },
         "domain.CreateSpecialistDTO": {
             "type": "object",
-            "required": [
-                "specialization_id",
-                "type"
-            ],
             "properties": {
                 "association_member": {
                     "type": "boolean"
@@ -3772,17 +3777,6 @@ const docTemplate = `{
                 },
                 "specialization_id": {
                     "type": "integer"
-                },
-                "type": {
-                    "enum": [
-                        "lawyer",
-                        "psychologist"
-                    ],
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/domain.SpecialistType"
-                        }
-                    ]
                 },
                 "user_id": {
                     "type": "integer"
@@ -3815,7 +3809,9 @@ const docTemplate = `{
                 "type": {
                     "enum": [
                         "lawyer",
-                        "psychologist"
+                        "psychologist",
+                        "nutritionist",
+                        "trainer"
                     ],
                     "allOf": [
                         {
@@ -4013,6 +4009,9 @@ const docTemplate = `{
                             "$ref": "#/definitions/domain.UserRole"
                         }
                     ]
+                },
+                "specialization_id": {
+                    "type": "integer"
                 }
             }
         },
@@ -4107,8 +4106,8 @@ const docTemplate = `{
                 "created_at": {
                     "type": "string"
                 },
-                "date": {
-                    "type": "string"
+                "day_of_week": {
+                    "type": "integer"
                 },
                 "end_time": {
                     "type": "string"
@@ -4196,7 +4195,7 @@ const docTemplate = `{
                 "specialization_id": {
                     "type": "integer"
                 },
-                "type": {
+                "specialization_type": {
                     "$ref": "#/definitions/domain.SpecialistType"
                 },
                 "updated_at": {
@@ -4220,11 +4219,15 @@ const docTemplate = `{
             "type": "string",
             "enum": [
                 "lawyer",
-                "psychologist"
+                "psychologist",
+                "nutritionist",
+                "trainer"
             ],
             "x-enum-varnames": [
                 "SpecialistTypeLawyer",
-                "SpecialistTypePsychologist"
+                "SpecialistTypePsychologist",
+                "SpecialistTypeNutritionist",
+                "SpecialistTypeTrainer"
             ]
         },
         "domain.Specialization": {
@@ -4328,17 +4331,6 @@ const docTemplate = `{
                 },
                 "specialization_id": {
                     "type": "integer"
-                },
-                "type": {
-                    "enum": [
-                        "lawyer",
-                        "psychologist"
-                    ],
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/domain.SpecialistType"
-                        }
-                    ]
                 }
             }
         },
@@ -4593,7 +4585,7 @@ const docTemplate = `{
 // SwaggerInfo holds exported Swagger Info so clients can modify it
 var SwaggerInfo = &swag.Spec{
 	Version:          "1.0",
-	Host:             "94.247.129.222:8080",
+	Host:             "",
 	BasePath:         "/api/v1",
 	Schemes:          []string{},
 	Title:            "LAPS API",

@@ -36,7 +36,6 @@ import (
 // @license.name Apache 2.0
 // @license.url http://www.apache.org/licenses/LICENSE-2.0.html
 
-// @host 94.247.129.222:8080
 // @BasePath /api/v1
 
 // @securityDefinitions.apikey ApiKeyAuth
@@ -91,7 +90,13 @@ func main() {
 
 	handler := rest.NewHandler(services, logger, cfg)
 
-	router := gin.Default()
+	router := gin.New()
+
+	router.RedirectTrailingSlash = false
+	router.RedirectFixedPath = false
+
+	router.Use(gin.Logger())
+	router.Use(gin.Recovery())
 
 	handler.InitRoutes(router)
 

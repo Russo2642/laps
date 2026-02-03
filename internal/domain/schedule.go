@@ -7,7 +7,7 @@ import (
 type Schedule struct {
 	ID           int64     `json:"id"`
 	SpecialistID int64     `json:"specialist_id"`
-	Date         time.Time `json:"date"`
+	DayOfWeek    int       `json:"day_of_week"`
 	StartTime    string    `json:"start_time"`
 	EndTime      string    `json:"end_time"`
 	SlotTime     int       `json:"slot_time"`
@@ -19,6 +19,11 @@ type Schedule struct {
 type WorkTimeSlot struct {
 	StartTime string `json:"start_time" binding:"required"`
 	EndTime   string `json:"end_time" binding:"required"`
+}
+
+type TimeSlot struct {
+	Time      string `json:"time"`
+	Available bool   `json:"available"`
 }
 
 type DaySchedule struct {
@@ -46,9 +51,8 @@ type UpdateScheduleDTO struct {
 }
 
 type ScheduleFilter struct {
-	SpecialistID *int64     `json:"specialist_id"`
-	StartDate    *time.Time `json:"start_date"`
-	EndDate      *time.Time `json:"end_date"`
-	Limit        int        `json:"limit"`
-	Offset       int        `json:"offset"`
+	SpecialistID *int64 `json:"specialist_id"`
+	DayOfWeek    *int   `json:"day_of_week"`
+	Limit        int    `json:"limit"`
+	Offset       int    `json:"offset"`
 }

@@ -25,6 +25,7 @@ type CommunicationMethod string
 const (
 	CommunicationMethodPhone    CommunicationMethod = "phone"
 	CommunicationMethodWhatsApp CommunicationMethod = "whatsapp"
+	CommunicationMethodVideo    CommunicationMethod = "video"
 )
 
 type Appointment struct {
@@ -38,6 +39,9 @@ type Appointment struct {
 	Status              AppointmentStatus   `json:"status"`
 	PaymentID           *string             `json:"payment_id"`
 	CommunicationMethod CommunicationMethod `json:"communication_method"`
+	IsOnline            bool                `json:"is_online"`
+	MeetLink            *string             `json:"meet_link,omitempty"`
+	MeetEventID         *string             `json:"meet_event_id,omitempty"`
 	CreatedAt           time.Time           `json:"created_at"`
 	UpdatedAt           time.Time           `json:"updated_at"`
 	ClientName          string              `json:"client_name,omitempty"`
@@ -51,7 +55,7 @@ type CreateAppointmentDTO struct {
 	ConsultationType    ConsultationType    `json:"consultation_type" binding:"required,oneof=primary secondary"`
 	SpecializationID    *int64              `json:"specialization_id"`
 	AppointmentDate     time.Time           `json:"appointment_date" binding:"required"`
-	CommunicationMethod CommunicationMethod `json:"communication_method" binding:"required,oneof=phone whatsapp"`
+	CommunicationMethod CommunicationMethod `json:"communication_method" binding:"required,oneof=phone whatsapp video"`
 }
 
 type UpdateAppointmentDTO struct {

@@ -75,10 +75,11 @@ type AppointmentRepository interface {
 	Create(ctx context.Context, clientID int64, appointment domain.CreateAppointmentDTO) (int64, error)
 	GetByID(ctx context.Context, id int64) (*domain.Appointment, error)
 	Update(ctx context.Context, id int64, appointment domain.UpdateAppointmentDTO) error
+	UpdateMeetInfo(ctx context.Context, id int64, meetLink, meetEventID string) error
 	Delete(ctx context.Context, id int64) error
 	List(ctx context.Context, filter domain.AppointmentFilter) ([]domain.Appointment, error)
 	CountByFilter(ctx context.Context, filter domain.AppointmentFilter) (int, error)
-	GetFreeSlots(ctx context.Context, specialistID int64, date string) ([]string, error)
+	GetBusySlots(ctx context.Context, specialistID int64, date string) (map[string]bool, error)
 }
 
 type ReviewRepository interface {

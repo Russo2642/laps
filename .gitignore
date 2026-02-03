@@ -31,11 +31,16 @@ vendor/
 
 # Log files
 *.log
+logs/
 
 # Database files
 *.db
-*.sql
 *.sqlite
+
+# Database backups
+backups/
+*.sql
+*.sql.gz
 
 # OS specific
 .DS_Store
@@ -45,7 +50,6 @@ Thumbs.db
 coverage.txt
 coverage.html 
 
-# На время
-Makefile
-.air.toml
-docker-compose.yml
+# Temporary files
+tmp/
+temp/

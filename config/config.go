@@ -7,13 +7,14 @@ import (
 )
 
 type Config struct {
-	Environment string
-	Name        string
-	Version     string
-	HTTP        HTTPConfig
-	Postgres    PostgresConfig
-	JWT         JWTConfig
-	S3          S3Config
+	Environment    string
+	Name           string
+	Version        string
+	HTTP           HTTPConfig
+	Postgres       PostgresConfig
+	JWT            JWTConfig
+	S3             S3Config
+	GoogleCalendar GoogleCalendarConfig
 }
 
 type HTTPConfig struct {
@@ -48,6 +49,13 @@ type S3Config struct {
 	SecretAccessKey string
 	Bucket          string
 	UseSSL          bool
+}
+
+type GoogleCalendarConfig struct {
+	Enabled             bool
+	CredentialsJSON     string
+	CalendarID          string
+	ServiceAccountEmail string
 }
 
 func NewConfig() (*Config, error) {
@@ -109,6 +117,12 @@ func NewConfig() (*Config, error) {
 			SecretAccessKey: getEnv("S3_SECRET_ACCESS_KEY", ""),
 			Bucket:          getEnv("S3_BUCKET", "laps"),
 			UseSSL:          getEnv("S3_USE_SSL", "true") == "true",
+		},
+		GoogleCalendar: GoogleCalendarConfig{
+			Enabled:             getEnv("GOOGLE_CALENDAR_ENABLED", "false") == "true",
+			CredentialsJSON:     getEnv("GOOGLE_CALENDAR_CREDENTIALS_JSON", ""),
+			CalendarID:          getEnv("GOOGLE_CALENDAR_ID", "primary"),
+			ServiceAccountEmail: getEnv("GOOGLE_SERVICE_ACCOUNT_EMAIL", ""),
 		},
 	}, nil
 }

@@ -9,35 +9,40 @@ type SpecialistType string
 const (
 	SpecialistTypeLawyer       SpecialistType = "lawyer"
 	SpecialistTypePsychologist SpecialistType = "psychologist"
+	SpecialistTypeNutritionist SpecialistType = "nutritionist"
+	SpecialistTypeTrainer      SpecialistType = "trainer"
 )
 
 func (t SpecialistType) IsValid() bool {
-	return t == SpecialistTypeLawyer || t == SpecialistTypePsychologist
+	return t == SpecialistTypeLawyer ||
+		t == SpecialistTypePsychologist ||
+		t == SpecialistTypeNutritionist ||
+		t == SpecialistTypeTrainer
 }
 
 type Specialist struct {
-	ID                    int64          `json:"id"`
-	UserID                int64          `json:"user_id"`
-	Type                  SpecialistType `json:"type"`
-	Specialization        string         `json:"specialization"`
-	SpecializationID      *int64         `json:"specialization_id"`
-	Experience            int            `json:"experience"`
-	Description           string         `json:"description"`
-	ExperienceYears       int            `json:"experience_years"`
-	Education             []Education    `json:"education"`
-	WorkExperience        []WorkPlace    `json:"work_experience"`
-	AssociationMember     bool           `json:"association_member"`
-	Rating                float64        `json:"rating"`
-	ReviewsCount          int            `json:"reviews_count"`
-	RecommendationRate    int            `json:"recommendation_rate"`
-	PrimaryConsultPrice   float64        `json:"primary_consult_price"`
-	SecondaryConsultPrice float64        `json:"secondary_consult_price"`
-	IsVerified            bool           `json:"is_verified"`
-	ProfilePhotoURL       string         `json:"profile_photo_url"`
-	FreeSlots             []string       `json:"free_slots,omitempty"`
-	User                  User           `json:"user"`
-	CreatedAt             time.Time      `json:"created_at"`
-	UpdatedAt             time.Time      `json:"updated_at"`
+	ID                    int64           `json:"id"`
+	UserID                int64           `json:"user_id"`
+	Specialization        string          `json:"specialization"`
+	SpecializationID      *int64          `json:"specialization_id"`
+	SpecializationType    *SpecialistType `json:"specialization_type,omitempty"`
+	Experience            int             `json:"experience"`
+	Description           string          `json:"description"`
+	ExperienceYears       int             `json:"experience_years"`
+	Education             []Education     `json:"education"`
+	WorkExperience        []WorkPlace     `json:"work_experience"`
+	AssociationMember     bool            `json:"association_member"`
+	Rating                float64         `json:"rating"`
+	ReviewsCount          int             `json:"reviews_count"`
+	RecommendationRate    int             `json:"recommendation_rate"`
+	PrimaryConsultPrice   float64         `json:"primary_consult_price"`
+	SecondaryConsultPrice float64         `json:"secondary_consult_price"`
+	IsVerified            bool            `json:"is_verified"`
+	ProfilePhotoURL       string          `json:"profile_photo_url"`
+	FreeSlots             []string        `json:"free_slots,omitempty"`
+	User                  User            `json:"user"`
+	CreatedAt             time.Time       `json:"created_at"`
+	UpdatedAt             time.Time       `json:"updated_at"`
 }
 
 type Education struct {
@@ -65,8 +70,7 @@ type WorkPlace struct {
 
 type CreateSpecialistDTO struct {
 	UserID                int64               `json:"user_id,omitempty"`
-	Type                  SpecialistType      `json:"type" binding:"required,oneof=lawyer psychologist"`
-	SpecializationID      int64               `json:"specialization_id" binding:"required"`
+	SpecializationID      *int64              `json:"specialization_id" binding:"omitempty"`
 	Experience            int                 `json:"experience,omitempty" binding:"min=0"`
 	Description           string              `json:"description,omitempty"`
 	ExperienceYears       int                 `json:"experience_years,omitempty"`
@@ -79,15 +83,14 @@ type CreateSpecialistDTO struct {
 }
 
 type UpdateSpecialistDTO struct {
-	Type                  *SpecialistType `json:"type" binding:"omitempty,oneof=lawyer psychologist"`
-	SpecializationID      *int64          `json:"specialization_id"`
-	Experience            *int            `json:"experience" binding:"omitempty,min=0"`
-	Description           *string         `json:"description"`
-	ExperienceYears       *int            `json:"experience_years"`
-	AssociationMember     *bool           `json:"association_member"`
-	PrimaryConsultPrice   *float64        `json:"primary_consult_price" binding:"omitempty,min=0"`
-	SecondaryConsultPrice *float64        `json:"secondary_consult_price" binding:"omitempty,min=0"`
-	ProfilePhoto          []byte          `json:"-"`
+	SpecializationID      *int64   `json:"specialization_id"`
+	Experience            *int     `json:"experience" binding:"omitempty,min=0"`
+	Description           *string  `json:"description"`
+	ExperienceYears       *int     `json:"experience_years"`
+	AssociationMember     *bool    `json:"association_member"`
+	PrimaryConsultPrice   *float64 `json:"primary_consult_price" binding:"omitempty,min=0"`
+	SecondaryConsultPrice *float64 `json:"secondary_consult_price" binding:"omitempty,min=0"`
+	ProfilePhoto          []byte   `json:"-"`
 }
 
 type EducationDTO struct {

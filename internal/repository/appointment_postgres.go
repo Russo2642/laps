@@ -67,9 +67,11 @@ func (r *AppointmentRepo) Create(ctx context.Context, clientID int64, dto domain
 		return 0, fmt.Errorf("некорректная цена консультации: %f", price)
 	}
 
+	isOnline := dto.CommunicationMethod == domain.CommunicationMethodVideo
+
 	query := `
-		INSERT INTO appointments (client_id, specialist_id, specialization_id, appointment_date, status, consultation_type, communication_method, price, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)
+		INSERT INTO appointments (client_id, specialist_id, specialization_id, appointment_date, status, consultation_type, communication_method, price, is_online, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10)
 		RETURNING id
 	`
 
@@ -84,6 +86,7 @@ func (r *AppointmentRepo) Create(ctx context.Context, clientID int64, dto domain
 		dto.ConsultationType,
 		dto.CommunicationMethod,
 		price,
+		isOnline,
 		now,
 	).Scan(&id)
 
@@ -100,14 +103,16 @@ func (r *AppointmentRepo) Create(ctx context.Context, clientID int64, dto domain
 
 func (r *AppointmentRepo) GetByID(ctx context.Context, id int64) (*domain.Appointment, error) {
 	query := `
-		SELECT a.id, a.client_id, a.specialist_id, a.specialization_id, a.price, a.appointment_date, a.status, a.consultation_type, a.communication_method, a.created_at, a.updated_at,
+		SELECT a.id, a.client_id, a.specialist_id, a.specialization_id, a.price, a.appointment_date, a.status, a.consultation_type, a.communication_method, 
+		       a.is_online, a.meet_link, a.meet_event_id, a.created_at, a.updated_at,
 		       u.first_name AS user_first_name, u.last_name AS user_last_name,
-		       s.type AS specialist_type,
+		       spec.type AS specialist_type,
 		       su.first_name AS specialist_first_name, su.last_name AS specialist_last_name
 		FROM appointments a
 		JOIN users u ON a.client_id = u.id
 		JOIN specialists s ON a.specialist_id = s.id
 		JOIN users su ON s.user_id = su.id
+		JOIN specializations spec ON s.specialization_id = spec.id
 		WHERE a.id = $1
 	`
 
@@ -125,6 +130,9 @@ func (r *AppointmentRepo) GetByID(ctx context.Context, id int64) (*domain.Appoin
 		&appointment.Status,
 		&appointment.ConsultationType,
 		&appointment.CommunicationMethod,
+		&appointment.IsOnline,
+		&appointment.MeetLink,
+		&appointment.MeetEventID,
 		&appointment.CreatedAt,
 		&appointment.UpdatedAt,
 		&userFirstName,
@@ -246,6 +254,21 @@ func (r *AppointmentRepo) Update(ctx context.Context, id int64, dto domain.Updat
 	return nil
 }
 
+func (r *AppointmentRepo) UpdateMeetInfo(ctx context.Context, id int64, meetLink, meetEventID string) error {
+	query := `
+		UPDATE appointments 
+		SET meet_link = $1, meet_event_id = $2, updated_at = $3
+		WHERE id = $4
+	`
+
+	_, err := r.db.Exec(ctx, query, meetLink, meetEventID, time.Now(), id)
+	if err != nil {
+		return fmt.Errorf("ошибка обновления информации о Google Meet: %w", err)
+	}
+
+	return nil
+}
+
 func (r *AppointmentRepo) Delete(ctx context.Context, id int64) error {
 	return r.UpdateStatus(ctx, id, domain.AppointmentStatusCancelled)
 }
@@ -286,12 +309,13 @@ func (r *AppointmentRepo) GetByUserID(ctx context.Context, userID int64, filter 
 	query := fmt.Sprintf(`
 		SELECT a.id, a.client_id, a.specialist_id, a.specialization_id, a.appointment_date, a.status, a.consultation_type, a.communication_method, a.created_at, a.updated_at,
 		       u.first_name AS user_first_name, u.last_name AS user_last_name,
-		       s.type AS specialist_type,
+		       spec.type AS specialist_type,
 		       su.first_name AS specialist_first_name, su.last_name AS specialist_last_name
 		FROM appointments a
 		JOIN users u ON a.client_id = u.id
 		JOIN specialists s ON a.specialist_id = s.id
 		JOIN users su ON s.user_id = su.id
+		JOIN specializations spec ON s.specialization_id = spec.id
 		%s
 		ORDER BY a.appointment_date DESC
 		LIMIT $%d OFFSET $%d
@@ -375,12 +399,13 @@ func (r *AppointmentRepo) GetBySpecialistID(ctx context.Context, specialistID in
 	query := fmt.Sprintf(`
 		SELECT a.id, a.client_id, a.specialist_id, a.specialization_id, a.appointment_date, a.status, a.consultation_type, a.communication_method, a.created_at, a.updated_at,
 		       u.first_name AS user_first_name, u.last_name AS user_last_name,
-		       s.type AS specialist_type,
+		       spec.type AS specialist_type,
 		       su.first_name AS specialist_first_name, su.last_name AS specialist_last_name
 		FROM appointments a
 		JOIN users u ON a.client_id = u.id
 		JOIN specialists s ON a.specialist_id = s.id
 		JOIN users su ON s.user_id = su.id
+		JOIN specializations spec ON s.specialization_id = spec.id
 		%s
 		ORDER BY a.appointment_date DESC
 		LIMIT $%d OFFSET $%d
@@ -428,7 +453,7 @@ func (r *AppointmentRepo) GetBySpecialistID(ctx context.Context, specialistID in
 	return appointments, nil
 }
 
-func (r *AppointmentRepo) GetFreeSlots(ctx context.Context, specialistID int64, date string) ([]string, error) {
+func (r *AppointmentRepo) GetBusySlots(ctx context.Context, specialistID int64, date string) (map[string]bool, error) {
 	query := `
 		SELECT TO_CHAR(appointment_date, 'HH24:MI') as time_slot
 		FROM appointments 
@@ -456,18 +481,7 @@ func (r *AppointmentRepo) GetFreeSlots(ctx context.Context, specialistID int64, 
 		return nil, fmt.Errorf("ошибка при обработке результатов: %w", err)
 	}
 
-	allSlots := []string{
-		"09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00",
-	}
-
-	var freeSlots []string
-	for _, slot := range allSlots {
-		if !busySlots[slot] {
-			freeSlots = append(freeSlots, slot)
-		}
-	}
-
-	return freeSlots, nil
+	return busySlots, nil
 }
 
 func (r *AppointmentRepo) CountByFilter(ctx context.Context, filter domain.AppointmentFilter) (int, error) {
@@ -526,14 +540,16 @@ func (r *AppointmentRepo) CountByFilter(ctx context.Context, filter domain.Appoi
 
 func (r *AppointmentRepo) List(ctx context.Context, filter domain.AppointmentFilter) ([]domain.Appointment, error) {
 	baseQuery := `
-		SELECT a.id, a.client_id, a.specialist_id, a.specialization_id, a.price, a.appointment_date, a.status, a.consultation_type, a.communication_method, a.created_at, a.updated_at,
+		SELECT a.id, a.client_id, a.specialist_id, a.specialization_id, a.price, a.appointment_date, a.status, a.consultation_type, a.communication_method, 
+		       a.is_online, a.meet_link, a.meet_event_id, a.created_at, a.updated_at,
 		       u.first_name AS user_first_name, u.last_name AS user_last_name,
-		       s.type AS specialist_type,
+		       spec.type AS specialist_type,
 		       su.first_name AS specialist_first_name, su.last_name AS specialist_last_name
 		FROM appointments a
 		JOIN users u ON a.client_id = u.id
 		JOIN specialists s ON a.specialist_id = s.id
 		JOIN users su ON s.user_id = su.id
+		JOIN specializations spec ON s.specialization_id = spec.id
 	`
 
 	var conditions []string
@@ -606,6 +622,9 @@ func (r *AppointmentRepo) List(ctx context.Context, filter domain.AppointmentFil
 			&appointment.Status,
 			&appointment.ConsultationType,
 			&appointment.CommunicationMethod,
+			&appointment.IsOnline,
+			&appointment.MeetLink,
+			&appointment.MeetEventID,
 			&appointment.CreatedAt,
 			&appointment.UpdatedAt,
 			&userFirstName,

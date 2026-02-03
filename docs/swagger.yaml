@@ -18,6 +18,12 @@ definitions:
         type: string
       id:
         type: integer
+      is_online:
+        type: boolean
+      meet_event_id:
+        type: string
+      meet_link:
+        type: string
       payment_id:
         type: string
       price:
@@ -51,10 +57,12 @@ definitions:
     enum:
     - phone
     - whatsapp
+    - video
     type: string
     x-enum-varnames:
     - CommunicationMethodPhone
     - CommunicationMethodWhatsApp
+    - CommunicationMethodVideo
   domain.ConsultationType:
     enum:
     - primary
@@ -73,6 +81,7 @@ definitions:
         enum:
         - phone
         - whatsapp
+        - video
       consultation_type:
         allOf:
         - $ref: '#/definitions/domain.ConsultationType'
@@ -181,21 +190,12 @@ definitions:
         type: number
       specialization_id:
         type: integer
-      type:
-        allOf:
-        - $ref: '#/definitions/domain.SpecialistType'
-        enum:
-        - lawyer
-        - psychologist
       user_id:
         type: integer
       work_experience:
         items:
           $ref: '#/definitions/domain.WorkExperienceDTO'
         type: array
-    required:
-    - specialization_id
-    - type
     type: object
   domain.CreateSpecializationDTO:
     properties:
@@ -211,6 +211,8 @@ definitions:
         enum:
         - lawyer
         - psychologist
+        - nutritionist
+        - trainer
     required:
     - description
     - name
@@ -336,6 +338,8 @@ definitions:
         enum:
         - client
         - specialist
+      specialization_id:
+        type: integer
     required:
     - email
     - first_name
@@ -404,8 +408,8 @@ definitions:
     properties:
       created_at:
         type: string
-      date:
-        type: string
+      day_of_week:
+        type: integer
       end_time:
         type: string
       exclude_times:
@@ -463,7 +467,7 @@ definitions:
         type: string
       specialization_id:
         type: integer
-      type:
+      specialization_type:
         $ref: '#/definitions/domain.SpecialistType'
       updated_at:
         type: string
@@ -480,10 +484,14 @@ definitions:
     enum:
     - lawyer
     - psychologist
+    - nutritionist
+    - trainer
     type: string
     x-enum-varnames:
     - SpecialistTypeLawyer
     - SpecialistTypePsychologist
+    - SpecialistTypeNutritionist
+    - SpecialistTypeTrainer
   domain.Specialization:
     properties:
       created_at:
@@ -551,12 +559,6 @@ definitions:
         type: number
       specialization_id:
         type: integer
-      type:
-        allOf:
-        - $ref: '#/definitions/domain.SpecialistType'
-        enum:
-        - lawyer
-        - psychologist
     type: object
   domain.UpdateSpecializationDTO:
     properties:
@@ -716,7 +718,6 @@ definitions:
       status:
         type: string
     type: object
-host: 94.247.129.222:8080
 info:
   contact:
     email: support@swagger.io
@@ -1610,20 +1611,16 @@ paths:
       - Отзывы
   /schedules:
     get:
-      description: Возвращает список расписаний с поддержкой фильтрации
+      description: Возвращает recurring расписание специалиста (шаблон для всех недель)
       parameters:
       - description: ID специалиста
         in: query
         name: specialist_id
         type: integer
-      - description: Начальная дата (YYYY-MM-DD)
+      - description: День недели (1=понедельник, 7=воскресенье)
         in: query
-        name: date_from
-        type: string
-      - description: Конечная дата (YYYY-MM-DD)
-        in: query
-        name: date_to
-        type: string
+        name: day_of_week
+        type: integer
       - description: Лимит (по умолчанию 20)
         in: query
         name: limit
@@ -1803,7 +1800,8 @@ paths:
       - Расписание
   /schedules/free-slots:
     get:
-      description: Возвращает список свободных временных слотов на выбранную дату
+      description: Возвращает список временных слотов на выбранную дату с информацией
+        о доступности
       parameters:
       - description: ID специалиста
         in: query
@@ -1815,11 +1813,15 @@ paths:
         name: date
         required: true
         type: string
+      - description: Вернуть детальную информацию (со всеми слотами и статусом)
+        in: query
+        name: detailed
+        type: boolean
       produces:
       - application/json
       responses:
         "200":
-          description: Список свободных слотов
+          description: Список слотов
           schema:
             additionalProperties: true
             type: object
@@ -1831,7 +1833,7 @@ paths:
           description: Внутренняя ошибка сервера
           schema:
             $ref: '#/definitions/rest.errorResponseBody'
-      summary: Получить свободные слоты специалиста
+      summary: Получить слоты специалиста
       tags:
       - Расписание
   /schedules/week:
@@ -1881,7 +1883,7 @@ paths:
         in: query
         name: offset
         type: integer
-      - description: Тип специалиста (психолог, психотерапевт и т.д.)
+      - description: Тип специалиста (lawyer, psychologist, nutritionist, trainer)
         in: query
         name: type
         type: string
@@ -1897,11 +1899,9 @@ paths:
       - application/json
       responses:
         "200":
-          description: Список специалистов
+          description: Список специалистов с пагинацией
           schema:
-            items:
-              $ref: '#/definitions/domain.Specialist'
-            type: array
+            $ref: '#/definitions/rest.paginatedResponse'
         "500":
           description: Внутренняя ошибка сервера
           schema:
@@ -1912,7 +1912,8 @@ paths:
     post:
       consumes:
       - application/json
-      description: Создает профиль специалиста для пользователя
+      description: Создает или обновляет профиль специалиста для пользователя (при
+        регистрации профиль создается автоматически)
       parameters:
       - description: Данные специалиста
         in: body
@@ -2336,7 +2337,7 @@ paths:
         in: query
         name: offset
         type: integer
-      - description: Тип специалиста (психолог, психотерапевт и т.д.)
+      - description: Тип специалиста (lawyer, psychologist, nutritionist, trainer)
         in: query
         name: type
         type: string

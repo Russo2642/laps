@@ -174,13 +174,14 @@ func (r *SpecializationRepo) List(ctx context.Context, filter domain.Specializat
 	}
 
 	if filter.SearchTerm != nil {
+		searchPattern := "%" + *filter.SearchTerm + "%"
 		if filter.SpecialistID != nil {
-			conditions = append(conditions, fmt.Sprintf("(s.name ILIKE $%d OR s.description ILIKE $%d)", argID, argID))
+			conditions = append(conditions, fmt.Sprintf("(s.name ILIKE $%d OR s.description ILIKE $%d)", argID, argID+1))
 		} else {
-			conditions = append(conditions, fmt.Sprintf("(name ILIKE $%d OR description ILIKE $%d)", argID, argID))
+			conditions = append(conditions, fmt.Sprintf("(name ILIKE $%d OR description ILIKE $%d)", argID, argID+1))
 		}
-		args = append(args, "%"+*filter.SearchTerm+"%")
-		argID++
+		args = append(args, searchPattern, searchPattern)
+		argID += 2
 	}
 
 	whereClause := ""
@@ -275,13 +276,14 @@ func (r *SpecializationRepo) CountByFilter(ctx context.Context, filter domain.Sp
 	}
 
 	if filter.SearchTerm != nil {
+		searchPattern := "%" + *filter.SearchTerm + "%"
 		if filter.SpecialistID != nil {
-			conditions = append(conditions, fmt.Sprintf("(s.name ILIKE $%d OR s.description ILIKE $%d)", argID, argID))
+			conditions = append(conditions, fmt.Sprintf("(s.name ILIKE $%d OR s.description ILIKE $%d)", argID, argID+1))
 		} else {
-			conditions = append(conditions, fmt.Sprintf("(name ILIKE $%d OR description ILIKE $%d)", argID, argID))
+			conditions = append(conditions, fmt.Sprintf("(name ILIKE $%d OR description ILIKE $%d)", argID, argID+1))
 		}
-		args = append(args, "%"+*filter.SearchTerm+"%")
-		argID++
+		args = append(args, searchPattern, searchPattern)
+		argID += 2
 	}
 
 	whereClause := ""

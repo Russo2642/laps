@@ -23,22 +23,34 @@ type tokenClaims struct {
 }
 
 type AuthServiceImpl struct {
-	authRepo  repository.AuthRepository
-	userRepo  repository.UserRepository
-	jwtConfig config.JWTConfig
-	logger    *zap.Logger
+	authRepo       repository.AuthRepository
+	userRepo       repository.UserRepository
+	specialistRepo repository.SpecialistRepository
+	jwtConfig      config.JWTConfig
+	logger         *zap.Logger
 }
 
-func NewAuthService(authRepo repository.AuthRepository, userRepo repository.UserRepository, jwtConfig config.JWTConfig, logger *zap.Logger) *AuthServiceImpl {
+func NewAuthService(
+	authRepo repository.AuthRepository,
+	userRepo repository.UserRepository,
+	specialistRepo repository.SpecialistRepository,
+	jwtConfig config.JWTConfig,
+	logger *zap.Logger,
+) *AuthServiceImpl {
 	return &AuthServiceImpl{
-		authRepo:  authRepo,
-		userRepo:  userRepo,
-		jwtConfig: jwtConfig,
-		logger:    logger,
+		authRepo:       authRepo,
+		userRepo:       userRepo,
+		specialistRepo: specialistRepo,
+		jwtConfig:      jwtConfig,
+		logger:         logger,
 	}
 }
 
 func (s *AuthServiceImpl) Register(ctx context.Context, dto domain.RegisterRequest) (int64, error) {
+	if dto.Role == domain.UserRoleSpecialist && dto.SpecializationID == nil {
+		return 0, errors.New("для регистрации специалиста необходимо указать специализацию")
+	}
+
 	existingUser, err := s.userRepo.GetByEmail(ctx, dto.Email)
 	if err == nil && existingUser != nil {
 		return 0, errors.New("пользователь с таким email уже существует")
@@ -65,9 +77,85 @@ func (s *AuthServiceImpl) Register(ctx context.Context, dto domain.RegisterReque
 		Role:       dto.Role,
 	}
 
-	userID, err := s.userRepo.Create(ctx, createUserDTO)
+	db := s.specialistRepo.GetDB()
+	tx, err := db.Begin(ctx)
+	if err != nil {
+		s.logger.Error("ошибка начала транзакции", zap.Error(err))
+		return 0, errors.New("ошибка при регистрации пользователя")
+	}
+	defer tx.Rollback(ctx)
+
+	query := `
+		INSERT INTO users (first_name, last_name, middle_name, email, phone, password_hash, role, is_active, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)
+		RETURNING id
+	`
+	now := time.Now()
+	var userID int64
+	err = tx.QueryRow(ctx, query,
+		createUserDTO.FirstName,
+		createUserDTO.LastName,
+		createUserDTO.MiddleName,
+		createUserDTO.Email,
+		createUserDTO.Phone,
+		createUserDTO.Password,
+		createUserDTO.Role,
+		true,
+		now,
+	).Scan(&userID)
+
 	if err != nil {
 		s.logger.Error("ошибка при создании пользователя", zap.Error(err))
+		return 0, errors.New("ошибка при регистрации пользователя")
+	}
+
+	if dto.Role == domain.UserRoleSpecialist {
+		specialistQuery := `
+			INSERT INTO specialists (
+				user_id, 
+				specialization_id,
+				experience, 
+				description, 
+				experience_years, 
+				association_member, 
+				primary_consult_price, 
+				secondary_consult_price,
+				profile_photo_url, 
+				created_at, 
+				updated_at
+			)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10)
+			RETURNING id
+		`
+
+		var specialistID int64
+		err = tx.QueryRow(ctx, specialistQuery,
+			userID,
+			dto.SpecializationID,
+			0,     // experience
+			"",    // description
+			0,     // experience_years
+			false, // association_member
+			0.0,   // primary_consult_price
+			0.0,   // secondary_consult_price
+			"",    // profile_photo_url
+			now,
+		).Scan(&specialistID)
+
+		if err != nil {
+			s.logger.Error("ошибка при создании профиля специалиста",
+				zap.Int64("userID", userID),
+				zap.Error(err))
+			return 0, errors.New("ошибка при создании профиля специалиста")
+		}
+
+		s.logger.Info("автоматически создан профиль специалиста при регистрации",
+			zap.Int64("userID", userID),
+			zap.Int64("specialistID", specialistID))
+	}
+
+	if err = tx.Commit(ctx); err != nil {
+		s.logger.Error("ошибка при коммите транзакции", zap.Error(err))
 		return 0, errors.New("ошибка при регистрации пользователя")
 	}
 

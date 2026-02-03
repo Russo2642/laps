@@ -17,7 +17,7 @@ import (
 // @Produce json
 // @Param limit query int false "Лимит записей на странице (по умолчанию 20)"
 // @Param offset query int false "Смещение (по умолчанию 0)"
-// @Param type query string false "Тип специалиста (психолог, психотерапевт и т.д.)"
+// @Param type query string false "Тип специалиста (lawyer, psychologist, nutritionist, trainer)"
 // @Param is_active query boolean false "Фильтр по активности"
 // @Param search query string false "Поисковый запрос"
 // @Param specialist_id query int false "ID специалиста для фильтрации специализаций"

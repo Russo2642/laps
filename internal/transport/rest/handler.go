@@ -28,11 +28,11 @@ func NewHandler(services *service.Services, logger *zap.Logger, config *config.C
 }
 
 func (h *Handler) InitRoutes(router *gin.Engine) {
+	router.Use(h.corsMiddleware())
+
 	router.Use(h.loggerMiddleware())
 
 	router.Use(h.errorMiddleware())
-
-	router.Use(h.corsMiddleware())
 
 	api := router.Group("/api/v1")
 	{
@@ -52,125 +52,93 @@ func (h *Handler) InitRoutes(router *gin.Engine) {
 			users.PUT("/:id", h.updateUser)
 			users.PUT("/:id/password", h.updatePassword)
 
-			admin := users.Group("/")
-			admin.Use(h.adminMiddleware())
-			{
-				admin.POST("/", h.createUser)
-				admin.GET("/", h.getUsers)
-				admin.DELETE("/:id", h.deleteUser)
-			}
+			users.POST("", h.adminMiddleware(), h.createUser)
+			users.GET("", h.adminMiddleware(), h.getUsers)
+			users.DELETE("/:id", h.adminMiddleware(), h.deleteUser)
 		}
-
 		specialists := api.Group("/specialists")
 		{
-			specialists.GET("/", h.getSpecialists)
+			specialists.GET("", h.getSpecialists)
 			specialists.GET("/:id", h.getSpecialistByID)
 			specialists.GET("/:id/reviews", h.getSpecialistReviewsRedirect)
 			specialists.GET("/me", h.authMiddleware(), h.getMySpecialistProfile)
 
-			auth := specialists.Group("/", h.authMiddleware())
-			{
-				auth.POST("/", h.createSpecialist)
-				auth.PUT("/:id", h.updateSpecialist)
-				auth.DELETE("/:id", h.deleteSpecialist)
+			specialists.POST("", h.authMiddleware(), h.createSpecialist)
+			specialists.PUT("/:id", h.authMiddleware(), h.updateSpecialist)
+			specialists.DELETE("/:id", h.authMiddleware(), h.deleteSpecialist)
 
-				auth.PUT("/:id/education/:eduId", h.updateSpecialistEducation)
-				auth.DELETE("/:id/education/:eduId", h.deleteSpecialistEducation)
+			specialists.PUT("/:id/education/:eduId", h.authMiddleware(), h.updateSpecialistEducation)
+			specialists.DELETE("/:id/education/:eduId", h.authMiddleware(), h.deleteSpecialistEducation)
 
-				auth.PUT("/:id/work-experience/:expId", h.updateSpecialistWorkExperience)
-				auth.DELETE("/:id/work-experience/:expId", h.deleteSpecialistWorkExperience)
+			specialists.PUT("/:id/work-experience/:expId", h.authMiddleware(), h.updateSpecialistWorkExperience)
+			specialists.DELETE("/:id/work-experience/:expId", h.authMiddleware(), h.deleteSpecialistWorkExperience)
 
-				auth.POST("/:id/specializations/:specId", h.addSpecialistSpecialization)
-				auth.DELETE("/:id/specializations/:specId", h.removeSpecialistSpecialization)
+			specialists.POST("/:id/specializations/:specId", h.authMiddleware(), h.addSpecialistSpecialization)
+			specialists.DELETE("/:id/specializations/:specId", h.authMiddleware(), h.removeSpecialistSpecialization)
 
-				specialistRoutes := auth.Group("/specialist-actions")
-				specialistRoutes.Use(h.specialistMiddleware())
-				{
-					specialistRoutes.GET("/appointments", h.getSpecialistAppointments)
-				}
+			specialists.GET("/specialist-actions/appointments", h.authMiddleware(), h.specialistMiddleware(), h.getSpecialistAppointments)
 
-				auth.POST("/:id/photo", h.uploadSpecialistPhoto)
-				auth.DELETE("/:id/photo", h.deleteSpecialistPhoto)
-			}
+			specialists.POST("/:id/photo", h.authMiddleware(), h.uploadSpecialistPhoto)
+			specialists.DELETE("/:id/photo", h.authMiddleware(), h.deleteSpecialistPhoto)
+
+			specialists.POST("/:id/work-experience", h.authMiddleware(), h.addWorkExperienceToSpecialist)
+			specialists.POST("/:id/education", h.authMiddleware(), h.addEducationToSpecialist)
 		}
 
 		h.initScheduleRoutes(api)
 
 		appointments := api.Group("/appointments")
+		appointments.Use(h.authMiddleware())
 		{
-			auth := appointments.Group("/")
-			auth.Use(h.authMiddleware())
-			{
-				auth.POST("/", h.createAppointment)
-				auth.GET("/:id", h.getAppointmentByID)
-				auth.PUT("/:id", h.updateAppointment)
-				auth.DELETE("/:id", h.cancelAppointment)
-				auth.GET("/", h.getAppointments)
-				auth.GET("/check-pay", h.checkConsultationType)
-			}
+			appointments.POST("", h.createAppointment)
+			appointments.GET("/:id", h.getAppointmentByID)
+			appointments.PUT("/:id", h.updateAppointment)
+			appointments.DELETE("/:id", h.cancelAppointment)
+			appointments.GET("", h.getAppointments)
+			appointments.GET("/check-pay", h.checkConsultationType)
 		}
 
 		reviews := api.Group("/reviews")
 		{
-			reviews.GET("/", h.getReviews)
+			reviews.GET("", h.getReviews)
 			reviews.GET("/:id", h.getReviewByID)
 			reviews.GET("/:id/replies", h.getReviewReplies)
 
-			auth := reviews.Group("/")
-			auth.Use(h.authMiddleware())
-			{
-				auth.POST("/", h.createReview)
-				auth.DELETE("/:id", h.deleteReview)
-				auth.POST("/:id/replies", h.createReviewReply)
-				auth.DELETE("/replies/:replyId", h.deleteReviewReply)
-			}
+			reviews.POST("", h.authMiddleware(), h.createReview)
+			reviews.DELETE("/:id", h.authMiddleware(), h.deleteReview)
+			reviews.POST("/:id/replies", h.authMiddleware(), h.createReviewReply)
+			reviews.DELETE("/replies/:replyId", h.authMiddleware(), h.deleteReviewReply)
 		}
 
 		specializations := api.Group("/specializations")
 		{
-			specializations.GET("/", h.getSpecializations)
+			specializations.GET("", h.getSpecializations)
 			specializations.GET("/:id", h.getSpecializationByID)
 
-			admin := specializations.Group("/")
-			admin.Use(h.authMiddleware(), h.adminMiddleware())
-			{
-				admin.POST("/", h.createSpecialization)
-				admin.PUT("/:id", h.updateSpecialization)
-				admin.DELETE("/:id", h.deleteSpecialization)
-			}
+			specializations.POST("", h.authMiddleware(), h.adminMiddleware(), h.createSpecialization)
+			specializations.PUT("/:id", h.authMiddleware(), h.adminMiddleware(), h.updateSpecialization)
+			specializations.DELETE("/:id", h.authMiddleware(), h.adminMiddleware(), h.deleteSpecialization)
 		}
 
 		education := api.Group("/education")
 		{
-			education.GET("/", h.getEducation)
+			education.GET("", h.getEducation)
 			education.GET("/:id", h.getEducationByID)
 
-			auth := education.Group("/")
-			auth.Use(h.authMiddleware())
-			{
-				auth.POST("/", h.addEducation)
-				auth.PUT("/:id", h.updateEducation)
-				auth.DELETE("/:id", h.deleteEducation)
-			}
+			education.POST("", h.authMiddleware(), h.addEducation)
+			education.PUT("/:id", h.authMiddleware(), h.updateEducation)
+			education.DELETE("/:id", h.authMiddleware(), h.deleteEducation)
 		}
 
 		workExperience := api.Group("/work-experience")
 		{
-			workExperience.GET("/", h.getWorkExperience)
+			workExperience.GET("", h.getWorkExperience)
 			workExperience.GET("/:id", h.getWorkExperienceByID)
 
-			auth := workExperience.Group("/")
-			auth.Use(h.authMiddleware())
-			{
-				auth.POST("/", h.addWorkExperience)
-				auth.PUT("/:id", h.updateWorkExperience)
-				auth.DELETE("/:id", h.deleteWorkExperience)
-			}
+			workExperience.POST("", h.authMiddleware(), h.addWorkExperience)
+			workExperience.PUT("/:id", h.authMiddleware(), h.updateWorkExperience)
+			workExperience.DELETE("/:id", h.authMiddleware(), h.deleteWorkExperience)
 		}
-
-		// REST compliant routes for specialists
-		specialists.POST("/:id/work-experience", h.authMiddleware(), h.addWorkExperienceToSpecialist)
-		specialists.POST("/:id/education", h.authMiddleware(), h.addEducationToSpecialist)
 	}
 }
 
@@ -179,18 +147,12 @@ func (h *Handler) initScheduleRoutes(api *gin.RouterGroup) {
 	{
 		schedules.GET("/free-slots", h.getFreeSlots)
 		schedules.GET("/week", h.getScheduleWeek)
-		schedules.GET("/", h.getSchedules)
+		schedules.GET("", h.getSchedules)
 		schedules.GET("/:id", h.getScheduleByID)
 
-		auth := schedules.Group("/", h.authMiddleware())
-		{
-			specialistRoutes := auth.Group("/", h.specialistMiddleware())
-			{
-				specialistRoutes.POST("/", h.createSchedule)
-				specialistRoutes.PUT("/", h.updateSchedule)
-				specialistRoutes.DELETE("/:id", h.deleteSchedule)
-			}
-		}
+		schedules.POST("", h.authMiddleware(), h.specialistMiddleware(), h.createSchedule)
+		schedules.PUT("", h.authMiddleware(), h.specialistMiddleware(), h.updateSchedule)
+		schedules.DELETE("/:id", h.authMiddleware(), h.specialistMiddleware(), h.deleteSchedule)
 	}
 }
 

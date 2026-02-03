@@ -23,7 +23,7 @@ type SpecialistSpecialization struct {
 type CreateSpecializationDTO struct {
 	Name        string         `json:"name" binding:"required"`
 	Description string         `json:"description" binding:"required"`
-	Type        SpecialistType `json:"type" binding:"required,oneof=lawyer psychologist"`
+	Type        SpecialistType `json:"type" binding:"required,oneof=lawyer psychologist nutritionist trainer"`
 	IsActive    bool           `json:"is_active"`
 }
 

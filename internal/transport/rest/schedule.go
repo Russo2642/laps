@@ -118,13 +118,13 @@ func (h *Handler) getScheduleByID(c *gin.Context) {
 		return
 	}
 
-	date := schedule.Date
-	weekday := date.Weekday()
+	now := time.Now()
+	weekday := now.Weekday()
 	var startDate time.Time
 	if weekday == 0 {
-		startDate = date.AddDate(0, 0, -6)
+		startDate = now.AddDate(0, 0, -6)
 	} else {
-		startDate = date.AddDate(0, 0, -int(weekday)+1)
+		startDate = now.AddDate(0, 0, -int(weekday)+1)
 	}
 
 	weekSchedule, slotTime, err := h.services.Schedule.GetWeekSchedule(c.Request.Context(), schedule.SpecialistID, startDate)
@@ -282,12 +282,11 @@ func (h *Handler) deleteSchedule(c *gin.Context) {
 }
 
 // @Summary Получить список расписаний
-// @Description Возвращает список расписаний с поддержкой фильтрации
+// @Description Возвращает recurring расписание специалиста (шаблон для всех недель)
 // @Tags Расписание
 // @Produce json
 // @Param specialist_id query int false "ID специалиста"
-// @Param date_from query string false "Начальная дата (YYYY-MM-DD)"
-// @Param date_to query string false "Конечная дата (YYYY-MM-DD)"
+// @Param day_of_week query int false "День недели (1=понедельник, 7=воскресенье)"
 // @Param limit query int false "Лимит (по умолчанию 20)"
 // @Param offset query int false "Смещение (по умолчанию 0)"
 // @Success 200 {object} map[string]interface{} "Расписание в формате недельного расписания"
@@ -304,30 +303,17 @@ func (h *Handler) getSchedules(c *gin.Context) {
 		}
 	}
 
-	dateFrom := c.DefaultQuery("date_from", "")
-	var startDate *time.Time
-	if dateFrom != "" {
-		parsedDate, err := time.Parse("2006-01-02", dateFrom)
-		if err == nil {
-			startDate = &parsedDate
-		} else {
-			badRequestResponse(c, "неверный формат даты начала, ожидается YYYY-MM-DD")
-			return
-		}
-	} else {
+	if specialistID != nil {
 		now := time.Now()
 		weekday := now.Weekday()
+		var startDate time.Time
 		if weekday == 0 {
-			parsedDate := now.AddDate(0, 0, -6)
-			startDate = &parsedDate
+			startDate = now.AddDate(0, 0, -6)
 		} else {
-			parsedDate := now.AddDate(0, 0, -int(weekday)+1)
-			startDate = &parsedDate
+			startDate = now.AddDate(0, 0, -int(weekday)+1)
 		}
-	}
 
-	if specialistID != nil && startDate != nil {
-		weekSchedule, slotTime, err := h.services.Schedule.GetWeekSchedule(c.Request.Context(), *specialistID, *startDate)
+		weekSchedule, slotTime, err := h.services.Schedule.GetWeekSchedule(c.Request.Context(), *specialistID, startDate)
 		if err != nil {
 			h.logger.Error("ошибка получения недельного расписания", zap.Error(err))
 			errorResponse(c, http.StatusInternalServerError, "ошибка получения недельного расписания")
@@ -343,18 +329,11 @@ func (h *Handler) getSchedules(c *gin.Context) {
 		return
 	}
 
-	if startDate == nil && dateFrom != "" {
-		badRequestResponse(c, "неверный формат даты начала, ожидается YYYY-MM-DD")
-		return
-	}
-
-	dateTo := c.DefaultQuery("date_to", "")
-	var endDate *time.Time
-	if dateTo != "" {
-		parsedDate, err := time.Parse("2006-01-02", dateTo)
-		if err == nil {
-			parsedDate = parsedDate.Add(24 * time.Hour).Add(-time.Second)
-			endDate = &parsedDate
+	var dayOfWeek *int
+	if dayStr := c.Query("day_of_week"); dayStr != "" {
+		day, err := strconv.Atoi(dayStr)
+		if err == nil && day >= 1 && day <= 7 {
+			dayOfWeek = &day
 		}
 	}
 
@@ -370,8 +349,7 @@ func (h *Handler) getSchedules(c *gin.Context) {
 
 	filter := domain.ScheduleFilter{
 		SpecialistID: specialistID,
-		StartDate:    startDate,
-		EndDate:      endDate,
+		DayOfWeek:    dayOfWeek,
 		Limit:        limit,
 		Offset:       offset,
 	}
@@ -388,19 +366,21 @@ func (h *Handler) getSchedules(c *gin.Context) {
 	paginatedSuccessResponse(c, schedules, total, page, limit)
 }
 
-// @Summary Получить свободные слоты специалиста
-// @Description Возвращает список свободных временных слотов на выбранную дату
+// @Summary Получить слоты специалиста
+// @Description Возвращает список временных слотов на выбранную дату с информацией о доступности
 // @Tags Расписание
 // @Produce json
 // @Param specialist_id query int true "ID специалиста"
 // @Param date query string true "Дата (YYYY-MM-DD)"
-// @Success 200 {object} map[string]interface{} "Список свободных слотов"
+// @Param detailed query boolean false "Вернуть детальную информацию (со всеми слотами и статусом)"
+// @Success 200 {object} map[string]interface{} "Список слотов"
 // @Failure 400 {object} errorResponseBody "Ошибка валидации данных"
 // @Failure 500 {object} errorResponseBody "Внутренняя ошибка сервера"
 // @Router /schedules/free-slots [get]
 func (h *Handler) getFreeSlots(c *gin.Context) {
 	specialistIDStr := c.Query("specialist_id")
 	date := c.Query("date")
+	detailed := c.Query("detailed") == "true"
 
 	if specialistIDStr == "" || date == "" {
 		badRequestResponse(c, "необходимо указать ID специалиста и дату")
@@ -419,18 +399,33 @@ func (h *Handler) getFreeSlots(c *gin.Context) {
 		return
 	}
 
-	slots, err := h.services.Schedule.GenerateTimeSlots(c.Request.Context(), specialistID, date)
-	if err != nil {
-		h.logger.Error("ошибка получения свободных слотов", zap.Error(err))
-		errorResponse(c, http.StatusInternalServerError, "ошибка получения свободных слотов")
-		return
-	}
+	if detailed {
+		detailedSlots, err := h.services.Schedule.GenerateTimeSlotsDetailed(c.Request.Context(), specialistID, date)
+		if err != nil {
+			h.logger.Error("ошибка получения детальных слотов", zap.Error(err))
+			errorResponse(c, http.StatusInternalServerError, "ошибка получения слотов")
+			return
+		}
 
-	successResponse(c, http.StatusOK, gin.H{
-		"specialist_id": specialistID,
-		"date":          date,
-		"free_slots":    slots,
-	})
+		successResponse(c, http.StatusOK, gin.H{
+			"specialist_id": specialistID,
+			"date":          date,
+			"slots":         detailedSlots,
+		})
+	} else {
+		slots, err := h.services.Schedule.GenerateTimeSlots(c.Request.Context(), specialistID, date)
+		if err != nil {
+			h.logger.Error("ошибка получения свободных слотов", zap.Error(err))
+			errorResponse(c, http.StatusInternalServerError, "ошибка получения свободных слотов")
+			return
+		}
+
+		successResponse(c, http.StatusOK, gin.H{
+			"specialist_id": specialistID,
+			"date":          date,
+			"free_slots":    slots,
+		})
+	}
 }
 
 // @Summary Получить недельное расписание специалиста

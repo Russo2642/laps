@@ -48,17 +48,14 @@ func (s *SpecialistServiceImpl) Create(ctx context.Context, userID int64, dto do
 		return 0, errors.New("пользователь уже зарегистрирован как специалист")
 	}
 
-	if !dto.Type.IsValid() {
-		s.logger.Error("некорректный тип специалиста", zap.String("type", string(dto.Type)))
-		return 0, errors.New("некорректный тип специалиста")
-	}
-
-	_, err = s.specRepo.GetByID(ctx, dto.SpecializationID)
-	if err != nil {
-		s.logger.Error("указанная специализация не найдена",
-			zap.Int64("specializationID", dto.SpecializationID),
-			zap.Error(err))
-		return 0, errors.New("указанная специализация не найдена")
+	if dto.SpecializationID != nil {
+		_, err = s.specRepo.GetByID(ctx, *dto.SpecializationID)
+		if err != nil {
+			s.logger.Error("указанная специализация не найдена",
+				zap.Int64("specializationID", *dto.SpecializationID),
+				zap.Error(err))
+			return 0, errors.New("указанная специализация не найдена")
+		}
 	}
 
 	id, err := s.repo.Create(ctx, userID, dto)
@@ -118,11 +115,6 @@ func (s *SpecialistServiceImpl) Update(ctx context.Context, id int64, dto domain
 	if err != nil {
 		s.logger.Error("специалист для обновления не найден", zap.Int64("id", id), zap.Error(err))
 		return errors.New("специалист не найден")
-	}
-
-	if dto.Type != nil && !dto.Type.IsValid() {
-		s.logger.Error("некорректный тип специалиста", zap.String("type", string(*dto.Type)))
-		return errors.New("некорректный тип специалиста")
 	}
 
 	if dto.SpecializationID != nil {

@@ -34,10 +34,16 @@ func (r *SpecialistRepo) Create(ctx context.Context, userID int64, dto domain.Cr
 	}
 	defer tx.Rollback(ctx)
 
+	var specializationIDValue interface{}
+	if dto.SpecializationID != nil {
+		specializationIDValue = *dto.SpecializationID
+	} else {
+		specializationIDValue = nil
+	}
+
 	query := `
 		INSERT INTO specialists (
 			user_id, 
-			type, 
 			specialization_id,
 			experience, 
 			description, 
@@ -49,7 +55,7 @@ func (r *SpecialistRepo) Create(ctx context.Context, userID int64, dto domain.Cr
 			created_at, 
 			updated_at
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10)
 		RETURNING id
 	`
 
@@ -57,8 +63,7 @@ func (r *SpecialistRepo) Create(ctx context.Context, userID int64, dto domain.Cr
 	var id int64
 	err = tx.QueryRow(ctx, query,
 		userID,
-		dto.Type,
-		dto.SpecializationID,
+		specializationIDValue,
 		dto.Experience,
 		dto.Description,
 		dto.ExperienceYears,
@@ -82,13 +87,13 @@ func (r *SpecialistRepo) Create(ctx context.Context, userID int64, dto domain.Cr
 
 func (r *SpecialistRepo) GetByID(ctx context.Context, id int64) (*domain.Specialist, error) {
 	query := `
-		SELECT s.id, s.user_id, s.type, s.experience, s.description, 
+		SELECT s.id, s.user_id, s.experience, s.description, 
 		       s.experience_years, s.association_member, s.rating, s.reviews_count, 
 		       s.recommendation_rate, s.primary_consult_price, s.secondary_consult_price, 
 		       s.is_verified, s.profile_photo_url, s.created_at, s.updated_at,
 		       s.specialization_id,
 			   u.id, u.email, u.phone, u.first_name, u.last_name, u.middle_name, u.role, u.created_at, u.updated_at,
-			   sp.name
+			   sp.name, sp.type
 		FROM specialists s
 		JOIN users u ON s.user_id = u.id
 		LEFT JOIN specializations sp ON s.specialization_id = sp.id
@@ -99,11 +104,11 @@ func (r *SpecialistRepo) GetByID(ctx context.Context, id int64) (*domain.Special
 	var user domain.User
 	var specializationID *int64
 	var specializationName *string
+	var specializationType *string
 
 	err := r.db.QueryRow(ctx, query, id).Scan(
 		&specialist.ID,
 		&specialist.UserID,
-		&specialist.Type,
 		&specialist.Experience,
 		&specialist.Description,
 		&specialist.ExperienceYears,
@@ -128,6 +133,7 @@ func (r *SpecialistRepo) GetByID(ctx context.Context, id int64) (*domain.Special
 		&user.CreatedAt,
 		&user.UpdatedAt,
 		&specializationName,
+		&specializationType,
 	)
 
 	if err != nil {
@@ -141,6 +147,10 @@ func (r *SpecialistRepo) GetByID(ctx context.Context, id int64) (*domain.Special
 	specialist.SpecializationID = specializationID
 	if specializationName != nil {
 		specialist.Specialization = *specializationName
+	}
+	if specializationType != nil {
+		t := domain.SpecialistType(*specializationType)
+		specialist.SpecializationType = &t
 	}
 
 	specialist.Education, err = r.GetEducationBySpecialistID(ctx, id)
@@ -276,13 +286,13 @@ func (r *SpecialistRepo) Delete(ctx context.Context, id int64) error {
 
 func (r *SpecialistRepo) List(ctx context.Context, specialistType *domain.SpecialistType, specializationID *int64, limit, offset int) ([]domain.Specialist, error) {
 	baseQuery := `
-		SELECT s.id, s.user_id, s.type, s.experience, s.description, 
+		SELECT s.id, s.user_id, s.experience, s.description, 
 		       s.experience_years, s.association_member, s.rating, s.reviews_count, 
 		       s.recommendation_rate, s.primary_consult_price, s.secondary_consult_price, 
 		       s.is_verified, s.profile_photo_url, s.created_at, s.updated_at, s.specialization_id,
 			   u.id, u.email, u.phone, u.first_name, u.last_name, u.middle_name, u.role, 
 			   u.is_active, u.created_at, u.updated_at,
-               sp.name
+               sp.name, sp.type
 		FROM specialists s
 		JOIN users u ON s.user_id = u.id
         LEFT JOIN specializations sp ON s.specialization_id = sp.id
@@ -293,7 +303,7 @@ func (r *SpecialistRepo) List(ctx context.Context, specialistType *domain.Specia
 	argIndex := 1
 
 	if specialistType != nil {
-		whereClauseConditions = append(whereClauseConditions, fmt.Sprintf("s.type = $%d", argIndex))
+		whereClauseConditions = append(whereClauseConditions, fmt.Sprintf("sp.type = $%d", argIndex))
 		args = append(args, *specialistType)
 		argIndex++
 	}
@@ -326,11 +336,11 @@ func (r *SpecialistRepo) List(ctx context.Context, specialistType *domain.Specia
 		var user domain.User
 		var isActive bool
 		var specializationName *string
+		var specializationType *string
 
 		err := rows.Scan(
 			&specialist.ID,
 			&specialist.UserID,
-			&specialist.Type,
 			&specialist.Experience,
 			&specialist.Description,
 			&specialist.ExperienceYears,
@@ -356,6 +366,7 @@ func (r *SpecialistRepo) List(ctx context.Context, specialistType *domain.Specia
 			&user.CreatedAt,
 			&user.UpdatedAt,
 			&specializationName,
+			&specializationType,
 		)
 
 		if err != nil {
@@ -366,6 +377,10 @@ func (r *SpecialistRepo) List(ctx context.Context, specialistType *domain.Specia
 		specialist.User = user
 		if specializationName != nil {
 			specialist.Specialization = *specializationName
+		}
+		if specializationType != nil {
+			t := domain.SpecialistType(*specializationType)
+			specialist.SpecializationType = &t
 		}
 
 		specialists = append(specialists, specialist)
@@ -395,6 +410,7 @@ func (r *SpecialistRepo) CountByFilter(ctx context.Context, specialistType *doma
 		SELECT COUNT(*)
 		FROM specialists s
 		JOIN users u ON s.user_id = u.id
+		LEFT JOIN specializations sp ON s.specialization_id = sp.id
 	`
 
 	var whereClauseConditions []string
@@ -402,7 +418,7 @@ func (r *SpecialistRepo) CountByFilter(ctx context.Context, specialistType *doma
 	argIndex := 1
 
 	if specialistType != nil {
-		whereClauseConditions = append(whereClauseConditions, fmt.Sprintf("s.type = $%d", argIndex))
+		whereClauseConditions = append(whereClauseConditions, fmt.Sprintf("sp.type = $%d", argIndex))
 		args = append(args, *specialistType)
 		argIndex++
 	}
